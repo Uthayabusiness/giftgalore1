@@ -1,0 +1,780 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GiftVault - Premium Gift Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                borderRadius: {
+                    lg: "var(--radius)",
+                    md: "calc(var(--radius) - 2px)",
+                    sm: "calc(var(--radius) - 4px)",
+                },
+                colors: {
+                    background: "var(--background)",
+                    foreground: "var(--foreground)",
+                    card: {
+                        DEFAULT: "var(--card)",
+                        foreground: "var(--card-foreground)",
+                    },
+                    popover: {
+                        DEFAULT: "var(--popover)",
+                        foreground: "var(--popover-foreground)",
+                    },
+                    primary: {
+                        DEFAULT: "var(--primary)",
+                        foreground: "var(--primary-foreground)",
+                    },
+                    secondary: {
+                        DEFAULT: "var(--secondary)",
+                        foreground: "var(--secondary-foreground)",
+                    },
+                    muted: {
+                        DEFAULT: "var(--muted)",
+                        foreground: "var(--muted-foreground)",
+                    },
+                    accent: {
+                        DEFAULT: "var(--accent)",
+                        foreground: "var(--accent-foreground)",
+                    },
+                    destructive: {
+                        DEFAULT: "var(--destructive)",
+                        foreground: "var(--destructive-foreground)",
+                    },
+                    border: "var(--border)",
+                    input: "var(--input)",
+                    ring: "var(--ring)",
+                }
+            }
+        }
+    };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --background: hsl(240 10% 3.9%);
+            --foreground: hsl(0 0% 98%);
+            --card: hsl(240 10% 3.9%);
+            --card-foreground: hsl(0 0% 98%);
+            --popover: hsl(240 10% 3.9%);
+            --popover-foreground: hsl(0 0% 98%);
+            --primary: hsl(262 83% 58%);
+            --primary-foreground: hsl(210 20% 98%);
+            --secondary: hsl(240 3.7% 15.9%);
+            --secondary-foreground: hsl(0 0% 98%);
+            --muted: hsl(240 3.7% 15.9%);
+            --muted-foreground: hsl(240 5% 64.9%);
+            --accent: hsl(24 95% 53%);
+            --accent-foreground: hsl(60 9.1% 97.8%);
+            --destructive: hsl(0 62.8% 30.6%);
+            --destructive-foreground: hsl(0 85.7% 97.3%);
+            --border: hsl(240 3.7% 15.9%);
+            --input: hsl(240 3.7% 15.9%);
+            --ring: hsl(262 83% 58%);
+            --radius: 0.75rem;
+            --font-sans: 'Inter', sans-serif;
+            --font-serif: 'Playfair Display', serif;
+        }
+
+        /* Light mode overrides */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --background: hsl(0 0% 100%);
+                --foreground: hsl(240 10% 3.9%);
+                --card: hsl(0 0% 100%);
+                --card-foreground: hsl(240 10% 3.9%);
+                --popover: hsl(0 0% 100%);
+                --popover-foreground: hsl(240 10% 3.9%);
+                --primary: hsl(262 83% 58%);
+                --primary-foreground: hsl(210 20% 98%);
+                --secondary: hsl(210 40% 96%);
+                --secondary-foreground: hsl(222.2 84% 4.9%);
+                --muted: hsl(210 40% 96%);
+                --muted-foreground: hsl(215.4 16.3% 46.9%);
+                --accent: hsl(24 95% 53%);
+                --accent-foreground: hsl(210 20% 98%);
+                --destructive: hsl(0 84.2% 60.2%);
+                --destructive-foreground: hsl(210 20% 98%);
+                --border: hsl(214.3 31.8% 91.4%);
+                --input: hsl(214.3 31.8% 91.4%);
+                --ring: hsl(262 83% 58%);
+            }
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: hsl(var(--background));
+            color: hsl(var(--foreground));
+        }
+
+        .font-serif {
+            font-family: var(--font-serif);
+        }
+
+        .gift-gradient {
+            background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+        }
+
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+
+        .card-hover:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .product-card:hover .product-overlay {
+            opacity: 1;
+        }
+
+        .product-overlay {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-background text-foreground">
+    <!-- @COMPONENT: NavigationHeader [sticky navigation with search, cart, user menu] -->
+    <header class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between">
+                <!-- Logo -->
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <div class="h-8 w-8 gift-gradient rounded-lg flex items-center justify-center">
+                            <i class="fas fa-gift text-white text-sm"></i>
+                        </div>
+                        <span class="font-serif text-xl font-bold">GiftVault</span>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="flex-1 max-w-xl mx-8">
+                    <div class="relative">
+                        <input type="text" 
+                               placeholder="Search for perfect gifts..." 
+                               class="w-full h-10 pl-10 pr-4 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                               data-implementation="Should include autocomplete and search suggestions">
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"></i>
+                    </div>
+                </div>
+
+                <!-- Navigation Actions -->
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 text-muted-foreground hover:text-foreground transition-colors" data-implementation="Toggle wishlist">
+                        <i class="far fa-heart text-lg"></i>
+                    </button>
+                    
+                    <div class="relative">
+                        <button class="p-2 text-muted-foreground hover:text-foreground transition-colors" data-implementation="Toggle cart sidebar">
+                            <i class="fas fa-shopping-cart text-lg"></i>
+                            <span class="absolute -top-1 -right-1 h-5 w-5 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center" data-bind="cart.itemCount">3</span>
+                        </button>
+                    </div>
+
+                    <div class="relative">
+                        <button class="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted transition-colors" data-implementation="Toggle user menu dropdown">
+                            <div class="h-8 w-8 bg-secondary rounded-full flex items-center justify-center">
+                                <i class="fas fa-user text-sm"></i>
+                            </div>
+                            <i class="fas fa-chevron-down text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Categories Navigation -->
+        <div class="border-t border-border">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <nav class="flex space-x-8 overflow-x-auto py-3">
+                    <a href="#" class="whitespace-nowrap text-sm font-medium text-primary border-b-2 border-primary pb-3">All Gifts</a>
+                    <a href="#" class="whitespace-nowrap text-sm font-medium text-muted-foreground hover:text-foreground transition-colors pb-3">Birthday</a>
+                    <a href="#" class="whitespace-nowrap text-sm font-medium text-muted-foreground hover:text-foreground transition-colors pb-3">Anniversary</a>
+                    <a href="#" class="whitespace-nowrap text-sm font-medium text-muted-foreground hover:text-foreground transition-colors pb-3">Wedding</a>
+                    <a href="#" class="whitespace-nowrap text-sm font-medium text-muted-foreground hover:text-foreground transition-colors pb-3">Corporate</a>
+                    <a href="#" class="whitespace-nowrap text-sm font-medium text-muted-foreground hover:text-foreground transition-colors pb-3">Personalized</a>
+                    <a href="#" class="whitespace-nowrap text-sm font-medium text-muted-foreground hover:text-foreground transition-colors pb-3">Luxury</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+    <!-- @END_COMPONENT: NavigationHeader -->
+
+    <!-- @COMPONENT: HeroSection [main banner with featured products and CTAs] -->
+    <section class="relative overflow-hidden">
+        <!-- Beautiful gift-themed background with elegant wrapping and ribbons -->
+        <div class="absolute inset-0 gift-gradient opacity-90"></div>
+        <!-- Artistic background pattern with gift boxes and festive elements -->
+        <div class="absolute inset-0" style="background-image: url('https://images.unsplash.com/photo-1549465220-1a8b9238cd48?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080'); background-size: cover; background-position: center; opacity: 0.1;"></div>
+        
+        <div class="relative container mx-auto px-4 sm:px-6 lg:px-8 py-20">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div class="text-center lg:text-left">
+                    <h1 class="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
+                        Perfect Gifts for Every 
+                        <span class="text-yellow-300">Special Moment</span>
+                    </h1>
+                    <p class="text-xl text-gray-100 mb-8 leading-relaxed">
+                        Discover thousands of unique, handpicked gifts that create lasting memories. From personalized treasures to luxury collections.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                        <button class="px-8 py-4 bg-white text-primary font-semibold rounded-lg hover:bg-gray-50 transition-colors shadow-lg" data-implementation="Navigate to products page">
+                            <i class="fas fa-search mr-2"></i>
+                            Explore Gifts
+                        </button>
+                        <button class="px-8 py-4 bg-transparent border-2 border-white text-white font-semibold rounded-lg hover:bg-white hover:text-primary transition-colors" data-implementation="Open gift guide modal">
+                            <i class="fas fa-lightbulb mr-2"></i>
+                            Gift Guide
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Elegant luxury gift box with premium packaging -->
+                    <div class="bg-white rounded-xl p-4 shadow-xl card-hover">
+                        <img src="https://images.unsplash.com/photo-1549465220-1a8b9238cd48?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" alt="Luxury gift box" class="w-full h-32 object-cover rounded-lg mb-3" data-mock="true">
+                        <h3 class="font-semibold text-gray-900 mb-1" data-mock="true">Luxury Collection</h3>
+                        <p class="text-sm text-gray-600" data-mock="true">Premium gifts</p>
+                    </div>
+                    
+                    <!-- Beautifully wrapped anniversary gift with golden ribbon -->
+                    <div class="bg-white rounded-xl p-4 shadow-xl card-hover mt-8">
+                        <img src="https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" alt="Anniversary gift" class="w-full h-32 object-cover rounded-lg mb-3" data-mock="true">
+                        <h3 class="font-semibold text-gray-900 mb-1" data-mock="true">Anniversary Gifts</h3>
+                        <p class="text-sm text-gray-600" data-mock="true">Romantic moments</p>
+                    </div>
+                    
+                    <!-- Personalized gift items with custom engraving -->
+                    <div class="bg-white rounded-xl p-4 shadow-xl card-hover">
+                        <img src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" alt="Personalized gifts" class="w-full h-32 object-cover rounded-lg mb-3" data-mock="true">
+                        <h3 class="font-semibold text-gray-900 mb-1" data-mock="true">Personalized</h3>
+                        <p class="text-sm text-gray-600" data-mock="true">Made special</p>
+                    </div>
+                    
+                    <!-- Corporate gift packages for business occasions -->
+                    <div class="bg-white rounded-xl p-4 shadow-xl card-hover mt-8">
+                        <img src="https://pixabay.com/get/gca3b802cf612dc4081b45f8a302d7baa7846334155a3067308c0883674c4fa705424591425d1988e9158fca3109e519248e846ce7038d2480928d7de5fb7a098_1280.jpg" alt="Corporate gifts" class="w-full h-32 object-cover rounded-lg mb-3" data-mock="true">
+                        <h3 class="font-semibold text-gray-900 mb-1" data-mock="true">Corporate Gifts</h3>
+                        <p class="text-sm text-gray-600" data-mock="true">Professional touch</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: HeroSection -->
+
+    <!-- @COMPONENT: FeaturedCategories [gift category showcase] -->
+    <section class="py-16 bg-muted/30">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="font-serif text-3xl sm:text-4xl font-bold mb-4">Shop by Occasion</h2>
+                <p class="text-lg text-muted-foreground max-w-2xl mx-auto">Find the perfect gift for every special moment in life</p>
+            </div>
+            
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+                <!-- Birthday celebration gifts with balloons and festive packaging -->
+                <div class="text-center group cursor-pointer" data-implementation="Navigate to birthday category">
+                    <div class="w-20 h-20 mx-auto mb-4 gift-gradient rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="fas fa-birthday-cake text-white text-2xl"></i>
+                    </div>
+                    <h3 class="font-semibold mb-1" data-mock="true">Birthday</h3>
+                    <p class="text-sm text-muted-foreground" data-mock="true">Celebration gifts</p>
+                </div>
+                
+                <!-- Romantic anniversary gifts with hearts and roses -->
+                <div class="text-center group cursor-pointer" data-implementation="Navigate to anniversary category">
+                    <div class="w-20 h-20 mx-auto mb-4 bg-pink-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="fas fa-heart text-white text-2xl"></i>
+                    </div>
+                    <h3 class="font-semibold mb-1" data-mock="true">Anniversary</h3>
+                    <p class="text-sm text-muted-foreground" data-mock="true">Love & romance</p>
+                </div>
+                
+                <!-- Wedding gifts with elegant bridal themes -->
+                <div class="text-center group cursor-pointer" data-implementation="Navigate to wedding category">
+                    <div class="w-20 h-20 mx-auto mb-4 bg-yellow-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="fas fa-ring text-white text-2xl"></i>
+                    </div>
+                    <h3 class="font-semibold mb-1" data-mock="true">Wedding</h3>
+                    <p class="text-sm text-muted-foreground" data-mock="true">Special union</p>
+                </div>
+                
+                <!-- Baby shower gifts with cute infant items -->
+                <div class="text-center group cursor-pointer" data-implementation="Navigate to baby category">
+                    <div class="w-20 h-20 mx-auto mb-4 bg-blue-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="fas fa-baby text-white text-2xl"></i>
+                    </div>
+                    <h3 class="font-semibold mb-1" data-mock="true">Baby</h3>
+                    <p class="text-sm text-muted-foreground" data-mock="true">New arrivals</p>
+                </div>
+                
+                <!-- Holiday gifts with seasonal decorations -->
+                <div class="text-center group cursor-pointer" data-implementation="Navigate to holiday category">
+                    <div class="w-20 h-20 mx-auto mb-4 bg-green-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="fas fa-tree text-white text-2xl"></i>
+                    </div>
+                    <h3 class="font-semibold mb-1" data-mock="true">Holiday</h3>
+                    <p class="text-sm text-muted-foreground" data-mock="true">Festive season</p>
+                </div>
+                
+                <!-- Corporate gifts for business relationships -->
+                <div class="text-center group cursor-pointer" data-implementation="Navigate to corporate category">
+                    <div class="w-20 h-20 mx-auto mb-4 bg-gray-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="fas fa-briefcase text-white text-2xl"></i>
+                    </div>
+                    <h3 class="font-semibold mb-1" data-mock="true">Corporate</h3>
+                    <p class="text-sm text-muted-foreground" data-mock="true">Business gifts</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: FeaturedCategories -->
+
+    <!-- @COMPONENT: FeaturedProducts [trending and popular gift items] -->
+    <section class="py-16">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center mb-12">
+                <div>
+                    <h2 class="font-serif text-3xl sm:text-4xl font-bold mb-4">Featured Gifts</h2>
+                    <p class="text-lg text-muted-foreground">Handpicked favorites that make perfect gifts</p>
+                </div>
+                <button class="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors" data-implementation="Navigate to all products">
+                    View All
+                </button>
+            </div>
+            
+            <!-- @MAP: featuredProducts.map(product => ( -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                <!-- Elegant jewelry gift box with sparkling diamond necklace -->
+                <div class="product-card bg-card rounded-xl shadow-lg overflow-hidden card-hover relative">
+                    <div class="relative">
+                        <img src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" alt="Diamond necklace" class="w-full h-48 object-cover" data-mock="true">
+                        <div class="product-overlay absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <button class="px-4 py-2 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors" data-implementation="Quick add to cart">
+                                <i class="fas fa-cart-plus mr-2"></i>Quick Add
+                            </button>
+                        </div>
+                        <button class="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors" data-implementation="Toggle wishlist">
+                            <i class="far fa-heart text-gray-600"></i>
+                        </button>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="font-semibold text-lg mb-2" data-bind="product.name" data-mock="true">Diamond Eternity Necklace</h3>
+                        <p class="text-muted-foreground text-sm mb-3" data-bind="product.description" data-mock="true">Elegant sparkle for special occasions</p>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-xl font-bold text-primary" data-bind="product.price" data-mock="true">₹12,999</span>
+                                <span class="text-sm text-muted-foreground line-through ml-2" data-bind="product.originalPrice" data-mock="true">₹15,999</span>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex text-yellow-400 mr-1">
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                </div>
+                                <span class="text-xs text-muted-foreground" data-bind="product.rating" data-mock="true">(128)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Luxury watch in premium gift packaging -->
+                <div class="product-card bg-card rounded-xl shadow-lg overflow-hidden card-hover relative">
+                    <div class="relative">
+                        <img src="https://images.unsplash.com/photo-1524592094714-0f0654e20314?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" alt="Luxury watch" class="w-full h-48 object-cover" data-mock="true">
+                        <div class="product-overlay absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <button class="px-4 py-2 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors" data-implementation="Quick add to cart">
+                                <i class="fas fa-cart-plus mr-2"></i>Quick Add
+                            </button>
+                        </div>
+                        <button class="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors" data-implementation="Toggle wishlist">
+                            <i class="far fa-heart text-gray-600"></i>
+                        </button>
+                        <span class="absolute top-3 left-3 px-2 py-1 bg-red-500 text-white text-xs rounded">Sale</span>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="font-semibold text-lg mb-2" data-bind="product.name" data-mock="true">Premium Swiss Watch</h3>
+                        <p class="text-muted-foreground text-sm mb-3" data-bind="product.description" data-mock="true">Timeless elegance and precision</p>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-xl font-bold text-primary" data-bind="product.price" data-mock="true">₹24,999</span>
+                                <span class="text-sm text-muted-foreground line-through ml-2" data-bind="product.originalPrice" data-mock="true">₹32,999</span>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex text-yellow-400 mr-1">
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="far fa-star text-xs"></i>
+                                </div>
+                                <span class="text-xs text-muted-foreground" data-bind="product.rating" data-mock="true">(89)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Artisanal home decor item with handcrafted details -->
+                <div class="product-card bg-card rounded-xl shadow-lg overflow-hidden card-hover relative">
+                    <div class="relative">
+                        <img src="https://images.unsplash.com/photo-1586023492125-27b2c045efd7?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" alt="Artisanal home decor" class="w-full h-48 object-cover" data-mock="true">
+                        <div class="product-overlay absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <button class="px-4 py-2 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors" data-implementation="Quick add to cart">
+                                <i class="fas fa-cart-plus mr-2"></i>Quick Add
+                            </button>
+                        </div>
+                        <button class="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors" data-implementation="Toggle wishlist">
+                            <i class="far fa-heart text-gray-600"></i>
+                        </button>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="font-semibold text-lg mb-2" data-bind="product.name" data-mock="true">Handcrafted Ceramic Vase</h3>
+                        <p class="text-muted-foreground text-sm mb-3" data-bind="product.description" data-mock="true">Unique artisanal home decor</p>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-xl font-bold text-primary" data-bind="product.price" data-mock="true">₹3,499</span>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex text-yellow-400 mr-1">
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                </div>
+                                <span class="text-xs text-muted-foreground" data-bind="product.rating" data-mock="true">(67)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Personalized photo frame with engraved message -->
+                <div class="product-card bg-card rounded-xl shadow-lg overflow-hidden card-hover relative">
+                    <div class="relative">
+                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" alt="Personalized photo frame" class="w-full h-48 object-cover" data-mock="true">
+                        <div class="product-overlay absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <button class="px-4 py-2 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors" data-implementation="Quick add to cart">
+                                <i class="fas fa-cart-plus mr-2"></i>Quick Add
+                            </button>
+                        </div>
+                        <button class="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors" data-implementation="Toggle wishlist">
+                            <i class="far fa-heart text-gray-600"></i>
+                        </button>
+                        <span class="absolute top-3 left-3 px-2 py-1 bg-primary text-primary-foreground text-xs rounded">Personalized</span>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="font-semibold text-lg mb-2" data-bind="product.name" data-mock="true">Custom Photo Frame</h3>
+                        <p class="text-muted-foreground text-sm mb-3" data-bind="product.description" data-mock="true">Engraved with your special message</p>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-xl font-bold text-primary" data-bind="product.price" data-mock="true">₹1,799</span>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex text-yellow-400 mr-1">
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                    <i class="fas fa-star text-xs"></i>
+                                </div>
+                                <span class="text-xs text-muted-foreground" data-bind="product.rating" data-mock="true">(234)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- @END_MAP )) -->
+        </div>
+    </section>
+    <!-- @END_COMPONENT: FeaturedProducts -->
+
+    <!-- @COMPONENT: GiftGuideSection [personalized gift recommendations] -->
+    <section class="py-16 bg-muted/30">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="max-w-4xl mx-auto text-center">
+                <h2 class="font-serif text-3xl sm:text-4xl font-bold mb-6">Not Sure What to Give?</h2>
+                <p class="text-lg text-muted-foreground mb-8">Let our AI-powered gift guide help you find the perfect present</p>
+                
+                <div class="bg-card rounded-2xl p-8 shadow-lg">
+                    <div class="grid md:grid-cols-3 gap-6 mb-8">
+                        <div class="text-center">
+                            <div class="w-16 h-16 mx-auto mb-4 gift-gradient rounded-full flex items-center justify-center">
+                                <i class="fas fa-user-friends text-white text-xl"></i>
+                            </div>
+                            <h3 class="font-semibold mb-2" data-mock="true">Tell us about them</h3>
+                            <p class="text-sm text-muted-foreground" data-mock="true">Age, interests, relationship</p>
+                        </div>
+                        
+                        <div class="text-center">
+                            <div class="w-16 h-16 mx-auto mb-4 bg-accent rounded-full flex items-center justify-center">
+                                <i class="fas fa-magic text-white text-xl"></i>
+                            </div>
+                            <h3 class="font-semibold mb-2" data-mock="true">Get recommendations</h3>
+                            <p class="text-sm text-muted-foreground" data-mock="true">AI-powered suggestions</p>
+                        </div>
+                        
+                        <div class="text-center">
+                            <div class="w-16 h-16 mx-auto mb-4 bg-green-500 rounded-full flex items-center justify-center">
+                                <i class="fas fa-heart text-white text-xl"></i>
+                            </div>
+                            <h3 class="font-semibold mb-2" data-mock="true">Perfect gift found</h3>
+                            <p class="text-sm text-muted-foreground" data-mock="true">Make someone happy</p>
+                        </div>
+                    </div>
+                    
+                    <button class="px-8 py-4 gift-gradient text-white font-semibold rounded-lg hover:opacity-90 transition-opacity" data-implementation="Open gift guide questionnaire">
+                        <i class="fas fa-lightbulb mr-2"></i>
+                        Start Gift Guide
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: GiftGuideSection -->
+
+    <!-- @COMPONENT: TestimonialsSection [customer reviews and experiences] -->
+    <section class="py-16">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="font-serif text-3xl sm:text-4xl font-bold mb-4">What Our Customers Say</h2>
+                <p class="text-lg text-muted-foreground">Real stories from gift-givers who found the perfect presents</p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-card rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="flex text-yellow-400 mr-2">
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                        </div>
+                    </div>
+                    <p class="text-muted-foreground mb-4" data-mock="true">"Found the most beautiful anniversary gift for my wife. The personalization was perfect and delivery was super fast!"</p>
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-primary rounded-full flex items-center justify-center mr-3">
+                            <span class="text-white font-semibold" data-mock="true">RK</span>
+                        </div>
+                        <div>
+                            <p class="font-semibold" data-mock="true">Raj Kumar</p>
+                            <p class="text-sm text-muted-foreground" data-mock="true">Verified Purchase</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-card rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="flex text-yellow-400 mr-2">
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                        </div>
+                    </div>
+                    <p class="text-muted-foreground mb-4" data-mock="true">"The corporate gifts for our clients were exceptional. Professional packaging and great quality. Highly recommend!"</p>
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-accent rounded-full flex items-center justify-center mr-3">
+                            <span class="text-white font-semibold" data-mock="true">PS</span>
+                        </div>
+                        <div>
+                            <p class="font-semibold" data-mock="true">Priya Singh</p>
+                            <p class="text-sm text-muted-foreground" data-mock="true">Business Customer</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-card rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="flex text-yellow-400 mr-2">
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                            <i class="fas fa-star"></i>
+                        </div>
+                    </div>
+                    <p class="text-muted-foreground mb-4" data-mock="true">"Amazing experience! The gift guide helped me find something perfect for my mother's birthday. She absolutely loved it!"</p>
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center mr-3">
+                            <span class="text-white font-semibold" data-mock="true">AM</span>
+                        </div>
+                        <div>
+                            <p class="font-semibold" data-mock="true">Arjun Mehta</p>
+                            <p class="text-sm text-muted-foreground" data-mock="true">Happy Customer</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- @END_COMPONENT: TestimonialsSection -->
+
+    <!-- @COMPONENT: Footer [comprehensive site navigation and information] -->
+    <footer class="bg-secondary text-secondary-foreground">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <!-- Company Info -->
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <div class="h-8 w-8 gift-gradient rounded-lg flex items-center justify-center">
+                            <i class="fas fa-gift text-white text-sm"></i>
+                        </div>
+                        <span class="font-serif text-xl font-bold">GiftVault</span>
+                    </div>
+                    <p class="text-muted-foreground mb-4" data-mock="true">Making every occasion special with thoughtfully curated gifts that create lasting memories.</p>
+                    <div class="flex space-x-4">
+                        <a href="#" class="text-muted-foreground hover:text-foreground transition-colors" data-implementation="Social media links">
+                            <i class="fab fa-facebook-f"></i>
+                        </a>
+                        <a href="#" class="text-muted-foreground hover:text-foreground transition-colors">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="text-muted-foreground hover:text-foreground transition-colors">
+                            <i class="fab fa-instagram"></i>
+                        </a>
+                        <a href="#" class="text-muted-foreground hover:text-foreground transition-colors">
+                            <i class="fab fa-pinterest"></i>
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Quick Links -->
+                <div>
+                    <h3 class="font-semibold text-lg mb-4">Quick Links</h3>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors" data-implementation="Navigation links">About Us</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Contact</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Gift Guide</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Track Order</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Returns</a></li>
+                    </ul>
+                </div>
+                
+                <!-- Categories -->
+                <div>
+                    <h3 class="font-semibold text-lg mb-4">Categories</h3>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors" data-implementation="Category navigation">Birthday Gifts</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Anniversary</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Wedding</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Corporate</a></li>
+                        <li><a href="#" class="text-muted-foreground hover:text-foreground transition-colors">Personalized</a></li>
+                    </ul>
+                </div>
+                
+                <!-- Newsletter -->
+                <div>
+                    <h3 class="font-semibold text-lg mb-4">Stay Updated</h3>
+                    <p class="text-muted-foreground mb-4" data-mock="true">Get the latest gift ideas and exclusive offers</p>
+                    <div class="space-y-3">
+                        <input type="email" 
+                               placeholder="Enter your email" 
+                               class="w-full h-10 px-3 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+                               data-implementation="Newsletter subscription">
+                        <button class="w-full px-4 py-2 gift-gradient text-white rounded-lg hover:opacity-90 transition-opacity" data-implementation="Subscribe to newsletter">
+                            Subscribe
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t border-border mt-8 pt-8 flex flex-col md:flex-row justify-between items-center">
+                <p class="text-muted-foreground text-sm" data-mock="true">&copy; 2024 GiftVault. All rights reserved.</p>
+                <div class="flex space-x-6 mt-4 md:mt-0">
+                    <a href="#" class="text-muted-foreground hover:text-foreground text-sm transition-colors" data-implementation="Legal pages">Privacy Policy</a>
+                    <a href="#" class="text-muted-foreground hover:text-foreground text-sm transition-colors">Terms of Service</a>
+                    <a href="#" class="text-muted-foreground hover:text-foreground text-sm transition-colors">Shipping Info</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <!-- @END_COMPONENT: Footer -->
+
+    <!-- @COMPONENT: CartSidebar [slide-out shopping cart] -->
+    <!-- @STATE: isCartOpen:boolean = false -->
+    <div id="cart-sidebar" class="fixed inset-y-0 right-0 z-50 w-96 bg-card shadow-2xl transform translate-x-full transition-transform duration-300" data-implementation="Toggle visibility based on cart state">
+        <div class="flex flex-col h-full">
+            <div class="flex items-center justify-between p-6 border-b border-border">
+                <h2 class="text-lg font-semibold">Shopping Cart</h2>
+                <button class="p-2 hover:bg-muted rounded-lg transition-colors" data-implementation="Close cart sidebar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-6">
+                <!-- @MAP: cartItems.map(item => ( -->
+                <div class="flex items-center space-x-4 mb-6" data-mock="true">
+                    <img src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100" alt="Cart item" class="w-16 h-16 object-cover rounded-lg">
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-sm" data-bind="item.name">Diamond Necklace</h3>
+                        <p class="text-muted-foreground text-xs" data-bind="item.variant">Silver, Medium</p>
+                        <div class="flex items-center justify-between mt-2">
+                            <div class="flex items-center space-x-2">
+                                <button class="w-6 h-6 bg-muted rounded flex items-center justify-center text-xs" data-implementation="Decrease quantity">-</button>
+                                <span class="text-sm" data-bind="item.quantity">1</span>
+                                <button class="w-6 h-6 bg-muted rounded flex items-center justify-center text-xs" data-implementation="Increase quantity">+</button>
+                            </div>
+                            <span class="font-semibold text-sm" data-bind="item.price">₹12,999</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- @END_MAP )) -->
+            </div>
+            
+            <div class="border-t border-border p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-lg font-semibold">Total:</span>
+                    <span class="text-xl font-bold text-primary" data-bind="cart.total">₹12,999</span>
+                </div>
+                <button class="w-full py-3 gift-gradient text-white rounded-lg font-semibold hover:opacity-90 transition-opacity" data-implementation="Navigate to checkout">
+                    <i class="fas fa-lock mr-2"></i>
+                    Secure Checkout
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: CartSidebar -->
+
+    <script>
+        // TODO: Implement cart functionality, user authentication, product filtering, and Razorpay integration
+        // TODO: Add real-time search with autocomplete
+        // TODO: Implement wishlist functionality
+        // TODO: Add product quick view modal
+        // TODO: Implement responsive navigation menu for mobile
+        // TODO: Add loading states and error handling
+        
+        (function() {
+            // Simple cart toggle functionality for demo
+            const cartButton = document.querySelector('[data-implementation*="Toggle cart"]');
+            const cartSidebar = document.getElementById('cart-sidebar');
+            
+            if (cartButton && cartSidebar) {
+                cartButton.addEventListener('click', function() {
+                    cartSidebar.classList.toggle('translate-x-full');
+                });
+            }
+            
+            // Close cart when clicking close button
+            const closeCart = document.querySelector('[data-implementation*="Close cart"]');
+            if (closeCart && cartSidebar) {
+                closeCart.addEventListener('click', function() {
+                    cartSidebar.classList.add('translate-x-full');
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

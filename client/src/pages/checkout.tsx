@@ -1,0 +1,1294 @@
+import { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
+import { useCart } from '@/contexts/cart-context';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useMutation } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { isUnauthorizedError } from '@/lib/authUtils';
+import Navigation from '@/components/navigation';
+import Footer from '@/components/footer';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { CreditCard, Lock, MapPin, User, Phone, Mail, Gift, ArrowLeft, AlertCircle, Info, CheckCircle } from 'lucide-react';
+import { validatePincodeForState, getPincodeRange, INDIAN_STATES_DATA, getDistrictsForState, INDIAN_STATES } from '@/lib/addressValidation';
+
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import CashfreePayment from '@/components/cashfree-payment';
+import { paymentService } from '@/lib/payment-service';
+
+const checkoutSchema = z.object({
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
+  email: z.string().email('Valid email is required'),
+  phone: z.string().min(10, 'Valid phone number is required'),
+  addressLine1: z.string().min(1, 'Address line 1 is required'),
+  addressLine2: z.string().optional(),
+  apartment: z.string().optional(),
+  city: z.string().min(1, 'City is required'),
+  district: z.string().min(1, 'District is required'),
+  state: z.string().min(1, 'State is required'),
+  pincode: z.string().min(6, 'Valid pincode is required'),
+  country: z.string().min(1, 'Country is required'),
+  specialInstructions: z.string().optional(),
+});
+
+type CheckoutForm = z.infer<typeof checkoutSchema>;
+
+export default function Checkout() {
+  const [, setLocation] = useLocation();
+  const { items, totalPrice, clearCart } = useCart();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { toast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [giftWrap, setGiftWrap] = useState(false);
+  const [expressDelivery, setExpressDelivery] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentSessionId, setPaymentSessionId] = useState('');
+  const [profileAddressLoaded, setProfileAddressLoaded] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState('India');
+  const [addressValidation, setAddressValidation] = useState<{
+    pincode: { isValid: boolean; suggestions: string[] };
+  }>({
+    pincode: { isValid: true, suggestions: [] }
+  });
+  const [pincodeSuggestions, setPincodeSuggestions] = useState<any[]>([]);
+  const [showPincodeSuggestions, setShowPincodeSuggestions] = useState(false);
+  // Add a flag to prevent automatic clearing during programmatic updates
+  const [isProgrammaticUpdate, setIsProgrammaticUpdate] = useState(false);
+  // State to hold loaded address data
+  const [addressData, setAddressData] = useState<any>({});
+  // State to hold available states for the Select component
+  const [availableStates, setAvailableStates] = useState<string[]>([]);
+
+
+  const {
+    register,
+    handleSubmit,
+    setValue: originalSetValue,
+    watch,
+    formState: { errors },
+    reset,
+    trigger,
+  } = useForm<CheckoutForm>({
+    resolver: zodResolver(checkoutSchema),
+    mode: 'onChange',
+    defaultValues: {
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
+      email: user?.email || '',
+      phone: user?.mobileNumber || '',
+      country: 'India',
+      state: '',
+      district: '',
+      city: '',
+      pincode: '',
+    },
+  });
+
+  // Create a wrapper around setValue to track all calls
+  const setValue = (name: keyof CheckoutForm, value: any, options?: any) => {
+    console.log(`🔍 setValue called for "${name}" with value:`, value, 'Options:', options);
+    console.trace('Stack trace for setValue call');
+    return originalSetValue(name, value, options);
+  };
+
+  // Redirect if not authenticated or cart is empty
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      toast({
+        title: "Unauthorized",
+        description: "You are logged out. Logging in again...",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 500);
+      return;
+    }
+
+    if (!authLoading && items.length === 0) {
+      setLocation('/cart');
+    }
+  }, [isAuthenticated, authLoading, items.length, toast, setLocation]);
+
+  // Set user data when available
+  useEffect(() => {
+    if (user) {
+      originalSetValue('firstName', user.firstName || '');
+      originalSetValue('lastName', user.lastName || '');
+      originalSetValue('email', user.email || '');
+      originalSetValue('phone', user.mobileNumber || '');
+      originalSetValue('country', 'India'); // Default country
+    }
+  }, [user]);
+
+  // Load address data from addressData.json
+  useEffect(() => {
+    const loadAddressData = async () => {
+      try {
+        const response = await fetch('/addressData.json');
+        const data = await response.json();
+        setAddressData(data);
+        
+        // Extract all available states
+        const states = Object.keys(data).map(stateKey => data[stateKey].statename);
+        setAvailableStates(states);
+        console.log('✅ Loaded address data with states:', states);
+      } catch (error) {
+        console.error('❌ Error loading address data:', error);
+      }
+    };
+    
+    loadAddressData();
+  }, []);
+
+  // Helper function to get districts for a selected state
+  const getDistrictsForSelectedState = (state: string) => {
+    if (!addressData || !state) return [];
+    
+    console.log('🔍 getDistrictsForSelectedState called with state:', state);
+    console.log('🔍 addressData keys:', Object.keys(addressData));
+    
+    const stateKey = Object.keys(addressData).find(key => addressData[key].statename === state);
+    console.log('🔍 Found stateKey:', stateKey);
+    
+    if (!stateKey) {
+      console.log('❌ No stateKey found for state:', state);
+      return [];
+    }
+    
+    const stateData = addressData[stateKey];
+    console.log('🔍 State data:', stateData);
+    console.log('🔍 Districts:', stateData.districts);
+    
+    const districts = stateData.districts.map((district: any) => district.districtname);
+    console.log('🔍 Extracted district names:', districts);
+    
+    return districts;
+  };
+
+  // Address validation functions
+  const validatePincode = (pincode: string) => {
+    if (!pincode) return;
+
+    // Use addressData.json for validation
+    if (addressData && watch('state') && watch('district')) {
+      const state = watch('state');
+      const district = watch('district');
+      
+      // Find the state key
+      const stateKey = Object.keys(addressData).find(key => addressData[key].statename === state);
+      if (stateKey) {
+        const stateData = addressData[stateKey];
+        const districtData = stateData.districts.find((d: any) => d.districtname === district);
+        
+        if (districtData) {
+          // Check if pincode exists in the selected district
+          const foundArea = districtData.areas.find((area: any) => area.pincode.toString() === pincode);
+          
+          if (foundArea) {
+            setAddressValidation(prev => ({
+              ...prev,
+              pincode: { isValid: true, suggestions: [] }
+            }));
+            return;
+          }
+        }
+      }
+    }
+
+    // If no match found, mark as invalid
+    setAddressValidation(prev => ({
+      ...prev,
+      pincode: { isValid: false, suggestions: [] }
+    }));
+  };
+
+  // Enhanced pincode validation with real-time feedback
+  const validatePincodeRealTime = (pincode: string) => {
+    if (!pincode) {
+      setAddressValidation(prev => ({
+        ...prev,
+        pincode: { isValid: true, suggestions: [] }
+      }));
+      return;
+    }
+
+    // Basic format validation first
+    if (pincode.length !== 6 || isNaN(parseInt(pincode))) {
+      setAddressValidation(prev => ({
+        ...prev,
+        pincode: { isValid: false, suggestions: [] }
+      }));
+      return;
+    }
+
+    // If we have both state and district, do full validation
+    if (watch('state') && watch('district')) {
+      validatePincode(pincode);
+    } else {
+      // No state/district selected, just mark as valid for now
+      setAddressValidation(prev => ({
+        ...prev,
+        pincode: { isValid: true, suggestions: [] }
+      }));
+    }
+  };
+
+  const handleFieldChange = (field: 'district' | 'city' | 'pincode', value: string) => {
+    setValue(field, value);
+    
+    if (field === 'pincode') {
+      validatePincodeRealTime(value);
+    }
+  };
+
+  // Pincode search and auto-fill functionality
+  const searchAndFillAddressByPincode = async (pincode: string) => {
+    try {
+      // Load address data
+      const response = await fetch('/addressData.json');
+      const addressData = await response.json();
+      
+      const pincodeNum = parseInt(pincode);
+      if (isNaN(pincodeNum)) return;
+      
+      // Search for the pincode in the data
+      const foundAddresses: any[] = [];
+      
+      Object.keys(addressData).forEach(stateKey => {
+        const state = addressData[stateKey];
+        state.districts.forEach((district: any) => {
+          district.areas.forEach((area: any) => {
+            if (area.pincode === pincodeNum) {
+              foundAddresses.push({
+                state: state.statename,
+                district: district.districtname,
+                area: area.areaname,
+                pincode: area.pincode
+              });
+            }
+          });
+        });
+      });
+      
+      if (foundAddresses.length > 0) {
+        // Store the found addresses for suggestions
+        setPincodeSuggestions(foundAddresses);
+        setShowPincodeSuggestions(true);
+        
+        // If only one result, auto-fill it
+        if (foundAddresses.length === 1) {
+          const foundAddress = foundAddresses[0];
+          fillAddressFromSuggestion(foundAddress);
+        } else {
+          // Show success message with multiple options
+          toast({
+            title: "Multiple Addresses Found!",
+            description: `Found ${foundAddresses.length} addresses for pincode ${pincode}. Please select one from the suggestions below.`,
+          });
+        }
+      } else {
+        toast({
+          title: "Pincode Not Found In Database",
+          description: "Please enter your pincode manually.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error searching pincode:', error);
+      toast({
+        title: "Search Failed",
+        description: "Unable to search for this pincode. Please try again or enter your address manually.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Function to fill address from a selected suggestion
+  const fillAddressFromSuggestion = async (suggestion: any) => {
+    console.log('🚀 fillAddressFromSuggestion STARTED with suggestion:', suggestion);
+    console.log('🔍 Suggestion data:', JSON.stringify(suggestion, null, 2));
+    
+    try {
+      // Set flag to prevent automatic clearing
+      console.log('📝 Setting isProgrammaticUpdate to true');
+      setIsProgrammaticUpdate(true);
+      
+      // First, hide suggestions
+      console.log('👁️ Hiding suggestions');
+      setShowPincodeSuggestions(false);
+      setPincodeSuggestions([]);
+      
+      // Reset validation immediately
+      console.log('✅ Resetting validation');
+      setAddressValidation(prev => ({
+        ...prev,
+        pincode: { isValid: true, suggestions: [] }
+      }));
+      
+      // Use setValue for each field individually with trigger
+      console.log('🌍 Setting country to India...');
+      setValue('country', 'India', { shouldValidate: false, shouldDirty: true });
+      console.log('✅ Country setValue completed');
+      
+      console.log('🏛️ Setting state to:', suggestion.state);
+      setValue('state', suggestion.state, { shouldValidate: false, shouldDirty: true });
+      console.log('✅ State setValue completed');
+      
+      // Allow one render tick so state-dependent district options populate
+      // before we programmatically set the district. This avoids the first-click
+      // issue where the Select clears because options are not ready yet.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      
+      console.log('🏘️ Setting district to:', suggestion.district);
+      setValue('district', suggestion.district, { shouldValidate: false, shouldDirty: true });
+      console.log('✅ District setValue completed');
+      
+      console.log('🏢 Setting area to:', suggestion.area);
+      setValue('apartment', suggestion.area, { shouldValidate: false, shouldDirty: true });
+      console.log('✅ Area setValue completed');
+      
+      console.log('📮 Setting pincode to:', suggestion.pincode.toString());
+      setValue('pincode', suggestion.pincode.toString(), { shouldValidate: false, shouldDirty: true });
+      console.log('✅ Pincode setValue completed');
+      
+      // Update the selectedCountry state for the Select component
+      console.log('🇮🇳 Updating selectedCountry state');
+      setSelectedCountry('India');
+      
+      // Show success message
+      console.log('🎉 Showing success toast');
+      toast({
+        title: "Address Filled!",
+        description: `Selected: ${suggestion.area}, ${suggestion.district}, ${suggestion.state}`,
+      });
+      
+      // Check form values immediately
+      console.log('🔍 Checking form values immediately after setValue');
+      const immediateValues = {
+        country: watch('country'),
+        state: watch('state'),
+        district: watch('district'),
+        city: watch('city'),
+        pincode: watch('pincode')
+      };
+      console.log('📊 Form values immediately after setValue:', immediateValues);
+      
+      // Check form values multiple times to track when they get cleared
+      setTimeout(() => {
+        console.log('⏰ Form values after 50ms:', {
+          country: watch('country'),
+          state: watch('state'),
+          district: watch('district'),
+          city: watch('city'),
+          pincode: watch('pincode')
+        });
+      }, 50);
+      
+      setTimeout(() => {
+        console.log('⏰ Form values after 100ms:', {
+          country: watch('country'),
+          state: watch('state'),
+          district: watch('district'),
+          city: watch('city'),
+          pincode: watch('pincode')
+        });
+      }, 100);
+      
+      setTimeout(() => {
+        console.log('⏰ Form values after 200ms:', {
+          country: watch('country'),
+          state: watch('state'),
+          district: watch('district'),
+          city: watch('city'),
+          pincode: watch('pincode')
+        });
+        
+        // Reset the flag
+        console.log('📝 Resetting isProgrammaticUpdate to false');
+        setIsProgrammaticUpdate(false);
+        
+        // Now validate the pincode
+        console.log('🔍 Calling validatePincode');
+        validatePincode(suggestion.pincode.toString());
+        
+        console.log('🏁 fillAddressFromSuggestion COMPLETED');
+      }, 200);
+      
+    } catch (error) {
+      console.error('❌ ERROR in fillAddressFromSuggestion:', error);
+      if (error instanceof Error) {
+        console.error('❌ Error stack:', error.stack);
+      }
+    }
+  };
+
+  const createOrderMutation = useMutation({
+    mutationFn: async (orderData: any) => {
+      const response = await apiRequest('POST', '/api/orders', orderData);
+      return await response.json();
+    },
+    onSuccess: async (data: any) => {
+      // Simulate payment processing
+      setIsProcessing(true);
+      
+      // Simulate payment delay
+      setTimeout(() => {
+        // Simulate 90% success rate for demo purposes
+        const isSuccess = Math.random() > 0.1;
+        
+        if (isSuccess) {
+          // Payment successful - redirect to order success page
+          clearCart();
+          toast({
+            title: "Order Placed!",
+            description: "Your order has been placed successfully.",
+          });
+          setLocation(`/order/success?orderId=${data?.id || 'unknown'}&amount=${totalWithExtras}`);
+        } else {
+          // Payment failed - redirect to order failed page
+          toast({
+            title: "Payment Failed",
+            description: "Your transaction could not be completed. Please try again.",
+            variant: "destructive",
+          });
+          setLocation(`/order/failed?error=Payment simulation failed`);
+        }
+        setIsProcessing(false);
+      }, 2000); // 2 second delay to simulate processing
+    },
+    onError: (error) => {
+      setIsProcessing(false);
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Demo Payment Mode",
+        description: "Order creation failed because payment gateway is not yet integrated. This is only for testing.",
+        variant: "destructive",
+      });
+      // Redirect to order failed page
+      setTimeout(() => {
+        setLocation(`/order/failed?error=Demo Mode: Payment gateway not integrated`);
+      }, 2000);
+    },
+  });
+
+  // Payment simulation functions for demo purposes
+  const simulatePayment = async (amount: number) => {
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return { success: Math.random() > 0.1 };
+  };
+
+  const onSubmit = async (data: CheckoutForm) => {
+    // Check if country is India
+    if (data.country !== 'India') {
+      toast({
+        title: "Service Not Available",
+        description: "We currently only provide shipping services to India. Please select India as your country.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // First create the order
+      const orderResponse = await createOrderMutation.mutateAsync({
+        shippingAddress: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone,
+          addressLine1: data.addressLine1,
+          addressLine2: data.addressLine2,
+          apartment: data.apartment,
+          country: data.country,
+          state: data.state,
+          district: data.district,
+          city: data.city,
+          pincode: data.pincode,
+          specialInstructions: data.specialInstructions,
+          giftWrap,
+          expressDelivery,
+        },
+      });
+
+      if (orderResponse.success && orderResponse.order) {
+        // Create payment order with Cashfree
+        const paymentOrder = await paymentService.createPaymentOrder({
+          orderId: orderResponse.order.orderNumber,
+          amount: totalWithExtras,
+          customerDetails: {
+            customerId: user?.id || '',
+            customerName: `${data.firstName} ${data.lastName}`,
+            customerEmail: data.email,
+            customerPhone: data.phone,
+          },
+          returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderResponse.order.orderNumber}`,
+        });
+
+        if (paymentOrder.success) {
+          setPaymentSessionId(paymentOrder.paymentSessionId);
+          setShowPaymentModal(true);
+        } else {
+          throw new Error('Failed to create payment order');
+        }
+      } else {
+        throw new Error('Failed to create order');
+      }
+    } catch (error) {
+      console.error('Checkout error:', error);
+      toast({
+        title: "Checkout Failed",
+        description: "There was an error processing your order. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-muted rounded w-1/3"></div>
+            <div className="grid lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-4">
+                <div className="h-64 bg-muted rounded"></div>
+              </div>
+              <div className="h-64 bg-muted rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const shippingFee = totalPrice > 1000 ? 0 : 99;
+  const giftWrapFee = giftWrap ? 50 : 0;
+  const expressDeliveryFee = expressDelivery ? 199 : 0;
+  const totalWithExtras = totalPrice + shippingFee + giftWrapFee + expressDeliveryFee;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navigation />
+      
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-8">
+                      <Button variant="ghost" size="icon" onClick={() => setLocation('/cart')} data-testid="button-back-to-cart">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <Lock className="h-6 w-6 text-primary" />
+          <h1 className="font-serif text-3xl font-bold">Secure Checkout</h1>
+        </div>
+
+        {/* Progress Indicator */}
+        <div className="mb-8">
+          <div className="flex items-center justify-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                1
+              </div>
+              <span className="text-sm font-medium">Cart</span>
+            </div>
+            <div className="w-16 h-0.5 bg-primary"></div>
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                2
+              </div>
+              <span className="text-sm font-medium">Checkout</span>
+            </div>
+            <div className="w-16 h-0.5 bg-muted"></div>
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-muted text-muted-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                3
+              </div>
+              <span className="text-sm font-medium">Payment</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Demo Notice */}
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-800">
+            <strong>Demo Mode:</strong> This is a payment simulation for testing purposes. 
+            Click "Place Order" to simulate payment processing (90% success rate).
+            <br />
+            <strong>Note:</strong> This is for PayU/Razorpay verification - payment gateway not yet integrated.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="grid lg:grid-cols-3 gap-8">
+            {/* Checkout Form */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Contact Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="h-5 w-5" />
+                    Contact Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="firstName">First Name *</Label>
+                      <Input
+                        id="firstName"
+                        {...register('firstName')}
+                        className={errors.firstName ? 'border-destructive' : ''}
+                        data-testid="input-first-name"
+                      />
+                      {errors.firstName && (
+                        <p className="text-sm text-destructive mt-1">{errors.firstName.message}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Input
+                        id="lastName"
+                        {...register('lastName')}
+                        className={errors.lastName ? 'border-destructive' : ''}
+                        data-testid="input-last-name"
+                      />
+                      {errors.lastName && (
+                        <p className="text-sm text-destructive mt-1">{errors.lastName.message}</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="email">Email Address *</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        className={`pl-10 ${errors.email ? 'border-destructive' : ''}`}
+                        {...register('email')}
+                        data-testid="input-email"
+                      />
+                    </div>
+                    {errors.email && (
+                      <p className="text-sm text-destructive mt-1">{errors.email.message}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="phone">Phone Number *</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="phone"
+                        type="tel"
+                        className={`pl-10 ${errors.phone ? 'border-destructive' : ''}`}
+                        {...register('phone')}
+                        data-testid="input-phone"
+                      />
+                    </div>
+                    {errors.phone && (
+                      <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Shipping Address */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MapPin className="h-5 w-5" />
+                    Shipping Address
+                  </CardTitle>
+                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-800">
+                    <strong>✅ Service Available:</strong> We provide shipping services to all locations within India.
+                  </div>
+                                                          {watch('state') && addressData && getDistrictsForSelectedState(watch('state')).length > 0 && (
+                      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                        <strong>🔍 Address Validation:</strong> Enhanced validation enabled for {watch('state')}. Districts and pincodes are validated against official data.
+                      </div>
+                    )}
+                </CardHeader>
+                <CardContent className="space-y-4">
+                                                      {/* Use Profile Address Checkbox */}
+                  {user?.address ? (
+                    <div className="p-3 bg-muted/50 rounded-lg border">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Checkbox
+                          id="useProfileAddress"
+                                                  onCheckedChange={async (checked) => {
+                          if (checked) {
+                            // Set flag to prevent automatic clearing during programmatic update
+                            setIsProgrammaticUpdate(true);
+                            
+                            // Populate all address fields from user profile
+                            setValue('firstName', user.address.firstName || user.firstName || '');
+                            setValue('lastName', user.address.lastName || user.lastName || '');
+                            setValue('phone', user.address.phoneNumber || user.mobileNumber || '');
+                            setValue('addressLine1', user.address.addressLine1 || '');
+                            setValue('addressLine2', user.address.addressLine2 || '');
+                            setValue('apartment', user.address.apartment || '');
+                            setValue('city', user.address.city || '');
+                            
+                            // Set state first, then wait for district options to populate
+                            setValue('state', user.address.state || '');
+                            
+                            // Allow one render tick so state-dependent district options populate
+                            await new Promise((resolve) => setTimeout(resolve, 0));
+                            
+                            setValue('district', user.address.district || '');
+                            setValue('pincode', user.address.pincode || '');
+                            setValue('country', 'India');
+                            setSelectedCountry('India');
+                            
+                            // Reset the flag
+                            setIsProgrammaticUpdate(false);
+                            setProfileAddressLoaded(true);
+                            
+                            // Validate the loaded address
+                            setTimeout(() => {
+                              if (user.address.state && user.address.pincode) {
+                                validatePincode(user.address.pincode);
+                              }
+                            }, 100);
+                            
+                            // Show success toast
+                            toast({
+                              title: "Address Loaded",
+                              description: "Your profile address has been loaded successfully. You can edit any field if needed.",
+                            });
+                          } else {
+                            // Clear address fields when unchecked, but keep basic user info
+                            setValue('addressLine1', '');
+                            setValue('addressLine2', '');
+                            setValue('apartment', '');
+                            setValue('city', '');
+                            setValue('district', '');
+                            setValue('state', '');
+                            setValue('pincode', '');
+                            setValue('country', 'India');
+                            setSelectedCountry('India');
+                            setProfileAddressLoaded(false);
+                            
+                            // Clear validation state
+                            setAddressValidation({
+                              pincode: { isValid: true, suggestions: [] }
+                            });
+                          }
+                        }}
+                          data-testid="checkbox-use-profile-address"
+                        />
+                        <Label htmlFor="useProfileAddress" className="text-sm font-medium cursor-pointer">
+                          Use address from my profile
+                        </Label>
+                        {profileAddressLoaded && (
+                          <Badge variant="secondary" className="ml-2">
+                            ✓ Loaded
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-6">
+                        Check this box to automatically fill in your shipping address using the information from your profile. 
+                        You can still edit any field after auto-filling.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-sm text-amber-800">
+                        <strong>Tip:</strong> You can save time by adding your address to your profile. 
+                        This will allow you to quickly fill in shipping details during checkout.
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <Label htmlFor="addressLine1" className="flex items-center gap-2">
+                      Address Line 1 *
+                      {profileAddressLoaded && (
+                        <Badge variant="outline" className="text-xs">
+                          From Profile
+                        </Badge>
+                      )}
+                    </Label>
+                    <Textarea
+                      id="addressLine1"
+                      {...register('addressLine1')}
+                      className={errors.addressLine1 ? 'border-destructive' : ''}
+                      placeholder="Enter your street address, building number, etc."
+                      data-testid="input-address-line1"
+                    />
+                    {errors.addressLine1 && (
+                      <p className="text-sm text-destructive mt-1">{errors.addressLine1.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="addressLine2">
+                      Address Line 2 (Optional)
+                    </Label>
+                    <Textarea
+                      id="addressLine2"
+                      {...register('addressLine2')}
+                      placeholder="Apartment, suite, unit, etc. (optional)"
+                      data-testid="input-address-line2"
+                    />
+                  </div>
+
+                  
+
+                  <div>
+                    <Label htmlFor="country">Country *</Label>
+                    <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                      <strong>Note:</strong> Currently, we only provide shipping services to India. Other countries are not supported.
+                    </div>
+                    <Select 
+                      value={watch('country') || ''}
+                      onValueChange={(value) => {
+                        setValue('country', value);
+                        setSelectedCountry(value);
+                      }}
+                    >
+                      <SelectTrigger className={errors.country ? 'border-destructive' : ''} data-testid="select-country">
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="India" className="text-green-600 font-medium">
+                          🇮🇳 India - Service Available
+                        </SelectItem>
+                        <SelectItem value="United States" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇺🇸 United States - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="United Kingdom" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇬🇧 United Kingdom - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="Canada" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇨🇦 Canada - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="Australia" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇦🇺 Australia - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="Germany" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇩🇪 Germany - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="France" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇫🇷 France - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="Japan" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇯🇵 Japan - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="China" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🇨🇳 China - Service Not Available
+                        </SelectItem>
+                        <SelectItem value="Other" className="text-muted-foreground opacity-60 cursor-not-allowed" disabled>
+                          🌍 Other Countries - Service Not Available
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {errors.country && (
+                      <p className="text-sm text-destructive mt-1">{errors.country.message}</p>
+                    )}
+                    {selectedCountry !== 'India' && (
+                      <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                        <strong>⚠️ Warning:</strong> Shipping to {selectedCountry} is not currently supported. Please select India to continue with your order.
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Currently, we only provide shipping services to India. Other countries are not supported at this time.
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="state">State *</Label>
+                    <Select 
+                      value={watch('state') || ''}
+                      onValueChange={(value) => {
+                        setValue('state', value);
+                        // Only clear district if this is not a programmatic update
+                        if (!isProgrammaticUpdate) {
+                          setValue('district', '');
+                        }
+                        // Re-validate pincode when state changes
+                        if (watch('pincode')) validatePincodeRealTime(watch('pincode'));
+                      }}
+                    >
+                      <SelectTrigger className={errors.state ? 'border-destructive' : ''} data-testid="select-state">
+                        <SelectValue placeholder="Select state" />
+                      </SelectTrigger>
+                                              <SelectContent>
+                          {availableStates.map((state) => (
+                            <SelectItem key={state} value={state}>
+                              {state}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                    </Select>
+                    {errors.state && (
+                      <p className="text-sm text-destructive mt-1">{errors.state.message}</p>
+                    )}
+
+                  </div>
+
+                  <div>
+                    <Label htmlFor="district">District *</Label>
+                    <Select
+                      value={watch('district') || ''}
+                      onValueChange={(value) => {
+                        setValue('district', value);
+                        // Re-validate pincode when district changes
+                        if (watch('pincode')) validatePincodeRealTime(watch('pincode'));
+                      }}
+                      disabled={!watch('state')}
+                    >
+                      <SelectTrigger className={errors.district ? 'border-destructive' : ''} data-testid="select-district">
+                        <SelectValue placeholder="Select district" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {watch('state') && addressData ? (
+                          getDistrictsForSelectedState(watch('state')).map((district: string) => (
+                            <SelectItem key={district} value={district}>
+                              {district}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-state" disabled>
+                            Please select a state first
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {errors.district && (
+                      <p className="text-sm text-destructive mt-1">{errors.district.message}</p>
+                    )}
+                    {!watch('state') && (
+                      <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3" />
+                        <span>Please select a state to see available districts</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="city" className="flex items-center gap-2">
+                      City *
+                      {profileAddressLoaded && (
+                        <Badge variant="outline" className="text-xs">
+                          From Profile
+                        </Badge>
+                      )}
+                    </Label>
+                    <Input
+                      id="city"
+                      value={watch('city') || ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setValue('city', value);
+                      }}
+                      className=""
+                      data-testid="input-city"
+                      placeholder="Enter city name"
+                    />
+                    {errors.city && !watch('city') && (
+                      <p className="text-sm text-destructive mt-1">{errors.city.message}</p>
+                    )}
+                  </div>
+                  
+                  {/* Area (moved from above, previously Apartment/Suite/Landmark) */}
+                  <div>
+                    <Label htmlFor="area">
+                      Area
+                    </Label>
+                    <Input
+                      id="area"
+                      {...register('apartment')}
+                      placeholder="Enter area or locality"
+                      data-testid="input-area"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="pincode">PIN Code *</Label>
+                    <div className="relative">
+                      <Input
+                        id="pincode"
+                        value={watch('pincode') || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          handleFieldChange('pincode', value);
+                        }}
+                        className="pr-20"
+                        placeholder="e.g., 400001"
+                        data-testid="input-pincode"
+                        maxLength={6}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const pincode = watch('pincode');
+                          if (pincode && pincode.length === 6) {
+                            searchAndFillAddressByPincode(pincode);
+                          }
+                        }}
+                        disabled={!watch('pincode') || watch('pincode').length !== 6}
+                        className="absolute right-1 top-1/2 transform -translate-y-1/2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        Search
+                      </button>
+                    </div>
+
+
+
+
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      💡 <strong>Pro tip:</strong> Enter a 6-digit pincode and click "Search" to auto-fill your address!
+                    </div>
+                    
+                    {/* Pincode Suggestions */}
+                    {showPincodeSuggestions && pincodeSuggestions.length > 0 && (
+                      <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="font-medium text-blue-800 mb-2">
+                          📍 Found {pincodeSuggestions.length} address{pincodeSuggestions.length > 1 ? 'es' : ''} for pincode {watch('pincode')}:
+                        </div>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {pincodeSuggestions.map((suggestion, index) => (
+                            <div
+                              key={index}
+                              onClick={() => fillAddressFromSuggestion(suggestion)}
+                              className="p-2 bg-white border border-blue-200 rounded cursor-pointer hover:bg-blue-50 transition-colors"
+                            >
+                              <div className="font-medium text-gray-900">{suggestion.area}</div>
+                              <div className="text-sm text-gray-600">
+                                {suggestion.district}, {suggestion.state} - {suggestion.pincode}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 text-xs text-blue-600">
+                          💡 Click on any address above to auto-fill your form
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="specialInstructions">Special Instructions (Optional)</Label>
+                    <Textarea
+                      id="specialInstructions"
+                      {...register('specialInstructions')}
+                      placeholder="Any special delivery instructions..."
+                      data-testid="input-special-instructions"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Additional Services */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Gift className="h-5 w-5" />
+                    Additional Services
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="giftWrap"
+                      checked={giftWrap}
+                      onCheckedChange={(checked) => setGiftWrap(checked === true)}
+                      data-testid="checkbox-gift-wrap"
+                    />
+                    <Label htmlFor="giftWrap" className="flex items-center gap-2">
+                      Gift Wrap <Badge variant="secondary">+₹50</Badge>
+                    </Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="expressDelivery"
+                      checked={expressDelivery}
+                      onCheckedChange={(checked) => setExpressDelivery(checked === true)}
+                      data-testid="checkbox-express-delivery"
+                    />
+                    <Label htmlFor="expressDelivery" className="flex items-center gap-2">
+                      Express Delivery (1-2 days) <Badge variant="secondary">+₹199</Badge>
+                    </Label>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Order Summary */}
+            <div className="lg:col-span-1">
+              <Card className="sticky top-24">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Gift className="h-5 w-5" />
+                    Order Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Order Items */}
+                  <div className="space-y-3">
+                    {items.map((item) => (
+                      <div key={item.id} className="flex gap-3" data-testid={`order-item-${item.productId}`}>
+                        <img
+                          src={item.product.images?.[0] || '/placeholder-image.jpg'}
+                          alt={item.product.name}
+                          className="w-12 h-12 object-contain bg-white rounded border"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.product.name}</p>
+                          <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                        </div>
+                        <div className="text-sm font-medium">
+                          ₹{(parseFloat(item.product.price) * item.quantity).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Separator />
+
+                  {/* Price Breakdown */}
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span data-testid="text-checkout-subtotal">₹{totalPrice.toLocaleString()}</span>
+                    </div>
+                    
+                    <div className="flex justify-between">
+                      <span>Shipping</span>
+                      <span data-testid="text-checkout-shipping">
+                        {shippingFee === 0 ? 'Free' : `₹${shippingFee}`}
+                      </span>
+                    </div>
+                    
+                    {giftWrap && (
+                      <div className="flex justify-between">
+                        <span>Gift Wrap</span>
+                        <span data-testid="text-gift-wrap-fee">₹{giftWrapFee}</span>
+                      </div>
+                    )}
+                    
+                    {expressDelivery && (
+                      <div className="flex justify-between">
+                        <span>Express Delivery</span>
+                        <span data-testid="text-express-delivery-fee">₹{expressDeliveryFee}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total</span>
+                    <span data-testid="text-checkout-total">₹{totalWithExtras.toLocaleString()}</span>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full gift-gradient hover:opacity-90"
+                    size="lg"
+                    disabled={isProcessing}
+                    data-testid="button-place-order"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Place Order
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Security Features */}
+                  <div className="space-y-2 pt-4 border-t border-border">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Lock className="h-3 w-3" />
+                      <span>Secure SSL encryption</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <CreditCard className="h-3 w-3" />
+                      <span>Demo Payment Simulation</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* Cashfree Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <CashfreePayment
+              paymentSessionId={paymentSessionId}
+              orderId={watch('firstName') + '_' + Date.now()}
+              amount={totalWithExtras}
+              customerName={`${watch('firstName')} ${watch('lastName')}`}
+              customerEmail={watch('email')}
+              customerPhone={watch('phone')}
+              onSuccess={(paymentData) => {
+                console.log('Payment successful:', paymentData);
+                setShowPaymentModal(false);
+                clearCart();
+                toast({
+                  title: "Payment Successful!",
+                  description: "Your order has been placed successfully.",
+                });
+                setLocation('/payment-success');
+              }}
+              onFailure={(error) => {
+                console.error('Payment failed:', error);
+                setShowPaymentModal(false);
+                toast({
+                  title: "Payment Failed",
+                  description: "There was an error processing your payment. Please try again.",
+                  variant: "destructive",
+                });
+              }}
+              onClose={() => {
+                setShowPaymentModal(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <Footer />
+    </div>
+  );
+}
