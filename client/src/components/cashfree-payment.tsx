@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditCard, Shield, CheckCircle } from 'lucide-react';
+import { Cashfree } from 'cashfree-pg-sdk-javascript';
 
 interface CashfreePaymentProps {
   paymentSessionId: string;
@@ -35,83 +36,50 @@ export default function CashfreePayment({
   const cashfreeRef = useRef<any>(null);
 
   useEffect(() => {
-    // Load Cashfree SDK
-    const script = document.createElement('script');
-    script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
-    script.async = true;
-    script.onload = () => {
-      console.log('📦 Cashfree SDK loaded from CDN');
-      // Initialize immediately - retry mechanism will handle timing issues
-      initializeCashfree();
-    };
-    script.onerror = () => {
-      console.error('❌ Failed to load Cashfree SDK');
-    };
-    document.head.appendChild(script);
-
-    return () => {
-      // Cleanup
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    };
+    console.log('📦 Initializing Cashfree from npm package...');
+    initializeCashfree();
   }, [paymentSessionId, orderId]); // Re-run when paymentSessionId or orderId changes
 
-  const initializeCashfree = (retryCount = 0) => {
-    console.log('🔧 Initializing Cashfree... (attempt', retryCount + 1, ')');
+  const initializeCashfree = () => {
+    console.log('🔧 Initializing Cashfree from npm package...');
     console.log('📋 Payment Session ID:', paymentSessionId);
     console.log('🆔 Order ID:', orderId);
-    console.log('🌐 window.cashfree available:', !!window.cashfree);
     
-    if (window.cashfree) {
-      console.log('✅ Cashfree SDK loaded');
+    try {
+      // Initialize Cashfree using npm package
+      const cashfree = new Cashfree({
+        mode: 'production', // Use 'sandbox' for testing
+      });
+
+      cashfreeRef.current = cashfree;
+
+      // Initialize payment session
+      console.log('🚀 Initializing payment session...');
+      cashfree.initialize({
+        paymentSessionId: paymentSessionId,
+        returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderId}`,
+      });
+
+      // Handle payment events
+      cashfree.on('PAYMENT_SUCCESS', (data: any) => {
+        console.log('✅ Payment successful:', data);
+        onSuccess(data);
+      });
+
+      cashfree.on('PAYMENT_FAILED', (data: any) => {
+        console.log('❌ Payment failed:', data);
+        onFailure(data);
+      });
+
+      cashfree.on('PAYMENT_USER_DROPPED', (data: any) => {
+        console.log('👤 Payment user dropped:', data);
+        onClose();
+      });
       
-      try {
-        const cashfree = window.cashfree({
-          mode: 'production', // Use 'sandbox' for testing
-        });
-
-        cashfreeRef.current = cashfree;
-
-        // Initialize payment session
-        console.log('🚀 Initializing payment session...');
-        cashfree.initialize({
-          paymentSessionId: paymentSessionId,
-          returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderId}`,
-        });
-
-        // Handle payment events
-        cashfree.on('PAYMENT_SUCCESS', (data: any) => {
-          console.log('✅ Payment successful:', data);
-          onSuccess(data);
-        });
-
-        cashfree.on('PAYMENT_FAILED', (data: any) => {
-          console.log('❌ Payment failed:', data);
-          onFailure(data);
-        });
-
-        cashfree.on('PAYMENT_USER_DROPPED', (data: any) => {
-          console.log('👤 Payment user dropped:', data);
-          onClose();
-        });
-        
-        console.log('✅ Cashfree initialized successfully');
-      } catch (error) {
-        console.error('❌ Error initializing Cashfree:', error);
-        onFailure(error);
-      }
-    } else {
-      console.warn('⚠️ Cashfree SDK not loaded yet, retrying...');
-      if (retryCount < 5) {
-        // Retry after a short delay
-        setTimeout(() => {
-          initializeCashfree(retryCount + 1);
-        }, 500);
-      } else {
-        console.error('❌ Cashfree SDK failed to load after 5 attempts');
-        onFailure(new Error('Cashfree SDK failed to load'));
-      }
+      console.log('✅ Cashfree initialized successfully');
+    } catch (error) {
+      console.error('❌ Error initializing Cashfree:', error);
+      onFailure(error);
     }
   };
 
