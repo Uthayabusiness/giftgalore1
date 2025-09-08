@@ -30,6 +30,8 @@ const insertProductSchema = z.object({
   isActive: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
   tags: z.array(z.string()).optional(),
+  hasDeliveryCharge: z.any().optional(),
+  deliveryCharge: z.any().optional(),
 });
 
 const insertCartSchema = z.object({
@@ -175,7 +177,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/products', isAdmin, async (req: any, res) => {
     try {
+      console.log('Create product request body:', req.body);
+      console.log('hasDeliveryCharge type:', typeof req.body.hasDeliveryCharge, 'value:', req.body.hasDeliveryCharge);
+      console.log('deliveryCharge type:', typeof req.body.deliveryCharge, 'value:', req.body.deliveryCharge);
+      
       const productData = insertProductSchema.parse(req.body);
+      console.log('Parsed product data:', productData);
+      console.log('Parsed hasDeliveryCharge:', productData.hasDeliveryCharge);
+      console.log('Parsed deliveryCharge:', productData.deliveryCharge);
+      
+      // Manual check
+      if (req.body.hasDeliveryCharge !== undefined) {
+        console.log('Manually adding hasDeliveryCharge:', req.body.hasDeliveryCharge);
+        (productData as any).hasDeliveryCharge = req.body.hasDeliveryCharge;
+      }
+      if (req.body.deliveryCharge !== undefined) {
+        console.log('Manually adding deliveryCharge:', req.body.deliveryCharge);
+        (productData as any).deliveryCharge = req.body.deliveryCharge;
+      }
+      
+      console.log('Final product data after manual addition:', productData);
       
       // Convert categoryIds strings to ObjectIds
       if (productData.categoryIds) {
@@ -194,9 +215,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log('Update product request for ID:', req.params.id);
       console.log('Request body:', req.body);
+      console.log('hasDeliveryCharge type:', typeof req.body.hasDeliveryCharge, 'value:', req.body.hasDeliveryCharge);
+      console.log('deliveryCharge type:', typeof req.body.deliveryCharge, 'value:', req.body.deliveryCharge);
+      
+      console.log('About to parse with Zod schema...');
+      console.log('Schema fields:', Object.keys(insertProductSchema.shape));
       
       const productData = insertProductSchema.partial().parse(req.body);
       console.log('Parsed product data:', productData);
+      console.log('Parsed hasDeliveryCharge:', productData.hasDeliveryCharge);
+      console.log('Parsed deliveryCharge:', productData.deliveryCharge);
+      
+      // Manual check
+      if (req.body.hasDeliveryCharge !== undefined) {
+        console.log('Manually adding hasDeliveryCharge:', req.body.hasDeliveryCharge);
+        (productData as any).hasDeliveryCharge = req.body.hasDeliveryCharge;
+      }
+      if (req.body.deliveryCharge !== undefined) {
+        console.log('Manually adding deliveryCharge:', req.body.deliveryCharge);
+        (productData as any).deliveryCharge = req.body.deliveryCharge;
+      }
+      
+      console.log('Final product data after manual addition:', productData);
       
       // Convert categoryIds strings to ObjectIds
       if (productData.categoryIds) {

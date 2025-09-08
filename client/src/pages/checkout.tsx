@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { useCart } from '@/contexts/cart-context';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { isUnauthorizedError } from '@/lib/authUtils';
 import Navigation from '@/components/navigation';
@@ -49,6 +49,16 @@ export default function Checkout() {
   const { items, totalPrice, clearCart } = useCart();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  // Refresh cart data to get latest product information
+  useEffect(() => {
+    if (items.length > 0) {
+      console.log('Cart items in checkout:', items);
+      console.log('Refreshing cart data to get latest product information...');
+      queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
+    }
+  }, [items.length, queryClient]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [giftWrap, setGiftWrap] = useState(false);
   const [expressDelivery, setExpressDelivery] = useState(false);
@@ -484,21 +494,21 @@ export default function Checkout() {
       console.log('📝 Creating order...');
       const orderResponse = await createOrderMutation.mutateAsync({
         shippingAddress: {
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          phone: data.phone,
-          addressLine1: data.addressLine1,
-          addressLine2: data.addressLine2,
-          apartment: data.apartment,
-          country: data.country,
-          state: data.state,
-          district: data.district,
-          city: data.city,
-          pincode: data.pincode,
-          specialInstructions: data.specialInstructions,
-          giftWrap,
-          expressDelivery,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      phone: data.phone,
+      addressLine1: data.addressLine1,
+      addressLine2: data.addressLine2,
+      apartment: data.apartment,
+      country: data.country,
+      state: data.state,
+      district: data.district,
+      city: data.city,
+      pincode: data.pincode,
+      specialInstructions: data.specialInstructions,
+      giftWrap,
+      expressDelivery,
         },
       });
       
@@ -566,11 +576,18 @@ export default function Checkout() {
 
   // Calculate delivery charges based on individual products
   const deliveryFee = items.reduce((total, item) => {
+    console.log('Cart item delivery charge check:', {
+      productName: item.product.name,
+      hasDeliveryCharge: item.product.hasDeliveryCharge,
+      deliveryCharge: item.product.deliveryCharge
+    });
     if (item.product.hasDeliveryCharge) {
       return total + item.product.deliveryCharge;
     }
     return total;
   }, 0);
+  
+  console.log('Total delivery fee calculated:', deliveryFee);
   
   const shippingFee = deliveryFee;
   const giftWrapFee = giftWrap ? 50 : 0;

@@ -271,6 +271,8 @@ export default function AdminProducts() {
 
   const onSubmit = (data: ProductForm) => {
     console.log('Form submitted with data:', data);
+    console.log('hasDeliveryCharge from form:', data.hasDeliveryCharge, 'type:', typeof data.hasDeliveryCharge);
+    console.log('deliveryCharge from form:', data.deliveryCharge, 'type:', typeof data.deliveryCharge);
     console.log('Selected product:', selectedProduct);
     
     // Validate that at least one category is selected
@@ -306,6 +308,8 @@ export default function AdminProducts() {
       minOrderQuantity: data.minOrderQuantity,
       isFeatured: data.isFeatured,
       isActive: data.isActive,
+      hasDeliveryCharge: data.hasDeliveryCharge,
+      deliveryCharge: data.deliveryCharge,
     };
 
     console.log('Final product data:', productData);

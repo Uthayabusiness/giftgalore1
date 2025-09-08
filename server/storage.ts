@@ -255,14 +255,21 @@ export class DatabaseStorage implements IStorage {
   async updateProduct(id: string, product: Partial<IProduct>): Promise<IProduct> {
     console.log('Storage updateProduct called with ID:', id);
     console.log('Product data to update:', product);
+    console.log('hasDeliveryCharge in storage:', product.hasDeliveryCharge);
+    console.log('deliveryCharge in storage:', product.deliveryCharge);
+    
+    const updateData = { ...product, updatedAt: new Date() };
+    console.log('Final update data:', updateData);
     
     const updatedProduct = await Product.findByIdAndUpdate(
       id,
-      { ...product, updatedAt: new Date() },
+      updateData,
       { new: true, runValidators: true }
     );
     
     console.log('Updated product result:', updatedProduct);
+    console.log('Updated product hasDeliveryCharge:', updatedProduct?.hasDeliveryCharge);
+    console.log('Updated product deliveryCharge:', updatedProduct?.deliveryCharge);
     
     if (!updatedProduct) throw new Error('Product not found');
     return updatedProduct;
