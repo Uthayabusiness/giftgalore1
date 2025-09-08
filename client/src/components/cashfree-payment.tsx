@@ -139,7 +139,7 @@ export default function CashfreePayment({
       // Method 1: Try calling as function (recommended approach from documentation)
       try {
         cashfreeInstance = cashfree({
-          mode: 'sandbox', // Use 'sandbox' for testing
+          mode: 'production', // Use 'production' for live payments
         });
         console.log('✅ Cashfree initialized with function call');
       } catch (functionError) {
@@ -148,7 +148,7 @@ export default function CashfreePayment({
         // Method 2: Try calling as constructor
         try {
           cashfreeInstance = new cashfree({
-            mode: 'sandbox', // Use 'sandbox' for testing
+            mode: 'production', // Use 'production' for live payments
           });
           console.log('✅ Cashfree initialized with constructor');
         } catch (constructorError) {
