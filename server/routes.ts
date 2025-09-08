@@ -564,13 +564,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/orders', isAuthenticated, async (req: any, res) => {
     try {
+      console.log('📝 Order creation request received');
       const userId = req.user._id;
       const { items, shippingAddress } = req.body;
       
+      console.log('👤 User ID:', userId);
+      console.log('📦 Request body:', { items, shippingAddress });
+      
       // Get cart items to create order
       const cartItems = await storage.getCartItems(userId);
+      console.log('🛍️ Cart items:', cartItems);
       
       if (cartItems.length === 0) {
+        console.log('❌ Cart is empty');
         return res.status(400).json({ message: "Cart is empty" });
       }
 
@@ -603,13 +609,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const order = await storage.createOrder(orderData);
+      console.log('✅ Order created successfully:', order);
 
       // Clear cart
       await storage.clearCart(userId);
+      console.log('🛒 Cart cleared');
 
-      res.json(order);
+      res.json({ success: true, order });
     } catch (error) {
-      console.error("Error creating order:", error);
+      console.error("❌ Error creating order:", error);
+      console.error("❌ Error details:", {
+        message: error.message,
+        stack: error.stack
+      });
       res.status(500).json({ message: "Failed to create order" });
     }
   });
