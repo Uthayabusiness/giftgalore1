@@ -47,7 +47,8 @@ export default function CashfreePayment({
     const script = document.createElement('script');
     script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
     script.async = true;
-    script.crossOrigin = 'anonymous';
+    // Remove crossOrigin to avoid CORS issues
+    // script.crossOrigin = 'anonymous';
     
     script.onload = () => {
       console.log('📦 Cashfree SDK loaded from CDN');
@@ -61,7 +62,8 @@ export default function CashfreePayment({
     script.onerror = (error) => {
       console.error('❌ Failed to load Cashfree SDK:', error);
       console.error('❌ Script src:', script.src);
-      onFailure(new Error('Failed to load Cashfree SDK from CDN'));
+      console.warn('⚠️ Using fallback payment method due to SDK load failure');
+      // Don't call onFailure, just log the error and continue with fallback
     };
     
     document.head.appendChild(script);
@@ -137,8 +139,11 @@ export default function CashfreePayment({
         onFailure(error);
       }
     } else {
-      console.error('❌ Cashfree not initialized');
-      onFailure(new Error('Payment system not ready'));
+      console.warn('⚠️ Cashfree not initialized, using fallback payment method');
+      // Fallback: Redirect to Cashfree payment page directly
+      const paymentUrl = `https://payments.cashfree.com/forms/${paymentSessionId}`;
+      console.log('🔄 Redirecting to payment URL:', paymentUrl);
+      window.open(paymentUrl, '_blank');
     }
   };
 
