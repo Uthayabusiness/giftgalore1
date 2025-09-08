@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditCard, Shield, CheckCircle } from 'lucide-react';
-import { Cashfree } from 'cashfree-pg-sdk-javascript';
 
 interface CashfreePaymentProps {
   paymentSessionId: string;
@@ -36,18 +35,60 @@ export default function CashfreePayment({
   const cashfreeRef = useRef<any>(null);
 
   useEffect(() => {
-    console.log('📦 Initializing Cashfree from npm package...');
-    initializeCashfree();
+    // Check if Cashfree SDK is already loaded
+    if (window.cashfree) {
+      console.log('📦 Cashfree SDK already loaded');
+      initializeCashfree();
+      return;
+    }
+
+    // Load Cashfree SDK from CDN
+    console.log('📦 Loading Cashfree SDK from CDN...');
+    const script = document.createElement('script');
+    script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    
+    script.onload = () => {
+      console.log('📦 Cashfree SDK loaded from CDN');
+      console.log('🌐 window.cashfree after load:', !!window.cashfree);
+      // Wait a bit for the SDK to fully initialize
+      setTimeout(() => {
+        initializeCashfree();
+      }, 1000);
+    };
+    
+    script.onerror = (error) => {
+      console.error('❌ Failed to load Cashfree SDK:', error);
+      console.error('❌ Script src:', script.src);
+      onFailure(new Error('Failed to load Cashfree SDK from CDN'));
+    };
+    
+    document.head.appendChild(script);
+
+    return () => {
+      // Cleanup
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
   }, [paymentSessionId, orderId]); // Re-run when paymentSessionId or orderId changes
 
   const initializeCashfree = () => {
-    console.log('🔧 Initializing Cashfree from npm package...');
+    console.log('🔧 Initializing Cashfree from CDN...');
     console.log('📋 Payment Session ID:', paymentSessionId);
     console.log('🆔 Order ID:', orderId);
+    console.log('🌐 window.cashfree available:', !!window.cashfree);
+    
+    if (!window.cashfree) {
+      console.error('❌ Cashfree SDK not available');
+      onFailure(new Error('Cashfree SDK not loaded'));
+      return;
+    }
     
     try {
-      // Initialize Cashfree using npm package
-      const cashfree = new Cashfree({
+      // Initialize Cashfree using CDN
+      const cashfree = window.cashfree({
         mode: 'production', // Use 'sandbox' for testing
       });
 
