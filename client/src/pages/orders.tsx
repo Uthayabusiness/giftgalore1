@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { isUnauthorizedError } from '@/lib/authUtils';
+import { apiRequest } from '@/lib/queryClient';
 import Navigation from '@/components/navigation';
 import Footer from '@/components/footer';
 import { Button } from '@/components/ui/button';
@@ -13,22 +14,182 @@ import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Package, Calendar, MapPin, CreditCard, Eye, Gift, ArrowLeft, Search, Filter, Download, Truck, Clock, CheckCircle, XCircle, AlertCircle, Star, Shield, Clock3, PackageCheck, Phone, Mail, Home, Building, Globe, FileText, User, ChevronRight, TrendingUp, Copy } from 'lucide-react';
+import { Package, Calendar, MapPin, CreditCard, Eye, Gift, ArrowLeft, Search, Filter, Download, Truck, Clock, CheckCircle, XCircle, AlertCircle, Star, Shield, Clock3, PackageCheck, Phone, Mail, Home, Building, Globe, FileText, User, ChevronRight, TrendingUp, Copy, Info } from 'lucide-react';
 
 export default function Orders() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [isExpired, setIsExpired] = useState<boolean>(false);
 
   const { data: orders = [], isLoading, error, refetch } = useQuery<any[]>({
     queryKey: ['/api/orders'],
     enabled: isAuthenticated,
     retry: false,
   });
+
+  // Cancel order mutation
+  const cancelOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      console.log('🔄 Cancelling order with ID:', orderId);
+      console.log('🔄 API URL:', `/api/orders/${orderId}/cancel`);
+      return await apiRequest('DELETE', `/api/orders/${orderId}/cancel`);
+    },
+    onSuccess: (data: any) => {
+      const { restoredItems = 0, skippedItems = 0 } = data;
+      let description = "Your order has been cancelled successfully.";
+      
+      if (restoredItems > 0) {
+        description += ` ${restoredItems} item(s) have been restored to your cart.`;
+      }
+      
+      if (skippedItems > 0) {
+        description += ` ${skippedItems} item(s) could not be restored (products no longer available).`;
+      }
+      
+      toast({
+        title: "Order Cancelled",
+        description: description,
+        variant: "default",
+      });
+      // Refresh orders and cart data
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
+    },
+    onError: (error: any) => {
+      console.log('🚨 Cancellation error details:', {
+        error,
+        status: error.status,
+        response: error.response,
+        message: error.message
+      });
+      
+      let errorMessage = "Failed to cancel order. Please try again.";
+      
+      // Check for 403 status in different possible locations
+      if (error.status === 403 || error.response?.status === 403) {
+        errorMessage = "Access denied. This order belongs to a different user account. Please log in with the correct account.";
+      } else if (error.status === 404 || error.response?.status === 404) {
+        errorMessage = "Order not found. It may have been already cancelled or deleted.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: "Cancellation Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Initiate payment mutation
+  const initiatePaymentMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      console.log('💳 Initiating payment for order ID:', orderId);
+      console.log('💳 API URL:', `/api/orders/${orderId}/initiate-payment`);
+      return await apiRequest('POST', `/api/orders/${orderId}/initiate-payment`);
+    },
+    onSuccess: (data: any) => {
+      console.log('✅ Payment initiated successfully:', data);
+      
+      // Redirect to Cashfree payment page
+      if (data.paymentSessionId) {
+        // In a real implementation, you would redirect to Cashfree payment page
+        // For now, we'll show a success message and refresh the page
+        toast({
+          title: "Payment Initiated",
+          description: "Redirecting to payment gateway...",
+          variant: "default",
+        });
+        
+        // Simulate payment success for demo purposes
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
+        }, 2000);
+      }
+    },
+    onError: (error: any) => {
+      console.log('🚨 Payment initiation error details:', {
+        error,
+        status: error.status,
+        response: error.response,
+        message: error.message
+      });
+      
+      let errorMessage = "Failed to initiate payment. Please try again.";
+      
+      if (error.status === 404 || error.response?.status === 404) {
+        errorMessage = "Order not found. It may have been already processed.";
+      } else if (error.status === 400 || error.response?.status === 400) {
+        if (error.response?.data?.expired) {
+          errorMessage = "Payment session has expired. Order has been automatically cancelled.";
+          // Refresh orders to show updated status
+          queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+        } else {
+          errorMessage = error.response?.data?.message || "Order cannot be processed. Please check the order status.";
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: "Payment Initiation Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Countdown timer for pending orders
+  useEffect(() => {
+    const pendingOrder = orders.find(order => order.status === 'pending');
+    
+    if (pendingOrder && pendingOrder.paymentInitiatedAt) {
+      const startTime = new Date(pendingOrder.paymentInitiatedAt).getTime();
+      const timeoutMinutes = 30;
+      const endTime = startTime + (timeoutMinutes * 60 * 1000);
+      
+      const updateTimer = () => {
+        const now = Date.now();
+        const remaining = Math.max(0, endTime - now);
+        
+        setTimeRemaining(remaining);
+        setIsExpired(remaining <= 0);
+        
+        if (remaining <= 0) {
+          // Order expired, refresh orders
+          queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+        }
+      };
+      
+      updateTimer(); // Initial update
+      const interval = setInterval(updateTimer, 1000); // Update every second
+      
+      return () => clearInterval(interval);
+    } else {
+      setTimeRemaining(0);
+      setIsExpired(false);
+    }
+  }, [orders, queryClient]);
+
+  // Format time remaining for display
+  const formatTimeRemaining = (milliseconds: number) => {
+    if (milliseconds <= 0) return '00:00';
+    
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
 
   // Debug logging to see what orders data we're receiving
   useEffect(() => {
@@ -45,6 +206,26 @@ export default function Orders() {
       });
     }
   }, [orders]);
+
+  // Check for orders requiring attention and show notification
+  useEffect(() => {
+    const ordersNeedingAttention = orders.filter((order: any) => 
+      ['pending', 'confirmed', 'processing'].includes(order.status)
+    );
+    if (ordersNeedingAttention.length > 0) {
+      toast({
+        title: "Orders Require Attention",
+        description: `You have ${ordersNeedingAttention.length} order(s) that need attention. Please complete payment or cancel to place new orders.`,
+        variant: "default",
+        duration: 8000,
+      });
+    }
+  }, [orders, toast]);
+
+  // Get orders that need attention (pending, confirmed, processing) - exclude draft orders
+  const pendingOrders = orders.filter((order: any) => 
+    ['pending', 'confirmed', 'processing'].includes(order.status)
+  );
 
   // Handle unauthorized errors at page level
   useEffect(() => {
@@ -94,6 +275,8 @@ export default function Orders() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'draft':
+        return 'bg-gray-100 text-gray-700 border-gray-200';
       case 'pending':
         return 'bg-orange-100 text-orange-700 border-orange-200';
       case 'confirmed':
@@ -113,6 +296,8 @@ export default function Orders() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
+      case 'draft':
+        return <FileText className="h-4 w-4" />;
       case 'pending':
         return <Clock className="h-4 w-4" />;
       case 'confirmed':
@@ -132,6 +317,8 @@ export default function Orders() {
 
   const getStatusText = (status: string) => {
     switch (status) {
+      case 'draft':
+        return 'Draft';
       case 'pending':
         return 'In Progress';
       case 'confirmed':
@@ -470,6 +657,149 @@ export default function Orders() {
               </div>
             </div>
           </div>
+          
+          {/* Pending Orders Alert Section */}
+          {pendingOrders.length > 0 && (
+            <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-200 rounded-xl p-6 mb-6 shadow-lg">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-orange-500 rounded-full shadow-lg">
+                  <AlertCircle className="h-8 w-8 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-orange-900 mb-2">
+                    ⚠️ Orders Require Attention
+                  </h3>
+                  <p className="text-orange-800 mb-4">
+                    You have <strong>{pendingOrders.length} order(s)</strong> that need to be completed or cancelled before you can place new orders.
+                  </p>
+                  
+                  <div className="space-y-3">
+                    {pendingOrders.map((order: any) => (
+                      <div key={order._id} className="bg-white rounded-lg p-4 border border-orange-200 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="p-2 bg-orange-100 rounded-lg">
+                              <Clock className="h-5 w-5 text-orange-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-900">Order #{order.orderNumber}</h4>
+                              <p className="text-sm text-gray-600">
+                                Placed on {new Date(order.createdAt).toLocaleDateString('en-IN')} • 
+                                Total: ₹{parseFloat(order.total).toLocaleString()}
+                              </p>
+                              {order.status === 'pending' && timeRemaining > 0 && (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-orange-600" />
+                                  <span className="text-sm font-medium text-orange-600">
+                                    Time remaining: {formatTimeRemaining(timeRemaining)}
+                                  </span>
+                                </div>
+                              )}
+                              {order.status === 'pending' && isExpired && (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <AlertCircle className="h-4 w-4 text-red-600" />
+                                  <span className="text-sm font-medium text-red-600">
+                                    Payment session expired
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={() => {
+                                setSelectedOrder(order);
+                                setIsDetailsDialogOpen(true);
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </Button>
+                            {order.status === 'pending' && (
+                              <Button
+                                onClick={() => {
+                                  if (confirm(`Initiate payment for order #${order.orderNumber}? This will redirect you to the payment gateway.`)) {
+                                    initiatePaymentMutation.mutate(order._id);
+                                  }
+                                }}
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                                disabled={initiatePaymentMutation.isPending || isExpired}
+                              >
+                                <CreditCard className="h-4 w-4 mr-2" />
+                                {initiatePaymentMutation.isPending ? 'Initiating...' : isExpired ? 'Expired' : 'Complete Payment'}
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => {
+                                console.log('🔄 Order data for cancellation:', {
+                                  _id: order._id,
+                                  orderNumber: order.orderNumber,
+                                  status: order.status
+                                });
+                                if (confirm(`Are you sure you want to cancel order #${order.orderNumber}? This will restore the items to your cart.`)) {
+                                  cancelOrderMutation.mutate(order._id);
+                                }
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="border-red-600 text-red-600 hover:bg-red-50"
+                              disabled={cancelOrderMutation.isPending}
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              {cancelOrderMutation.isPending ? 'Cancelling...' : 'Cancel Order'}
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        {/* Clear instructions */}
+                        <div className="mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                          <div className="flex items-start gap-2">
+                            <Info className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                            <div className="text-sm text-orange-800">
+                              <p className="font-medium mb-1">What you need to do:</p>
+                              <ul className="list-disc list-inside space-y-1 text-xs">
+                                <li><strong>Complete Payment:</strong> If you want to keep this order, complete the payment process</li>
+                                <li><strong>Cancel Order:</strong> If you no longer want this order, cancel it to restore items to your cart</li>
+                                <li><strong>New Orders:</strong> You cannot place new orders until this pending order is resolved</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 p-4 bg-white rounded-lg border border-orange-200">
+                    <div className="flex items-center gap-2 text-orange-800">
+                      <Shield className="h-5 w-5" />
+                      <span className="font-medium">Need Help?</span>
+                    </div>
+                    <p className="text-sm text-orange-700 mt-1">
+                      If you're having trouble with payment or need assistance, please contact our support team.
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      <Button asChild variant="outline" size="sm" className="border-orange-600 text-orange-600 hover:bg-orange-50">
+                        <Link href="/contact">
+                          <Phone className="h-4 w-4 mr-2" />
+                          Contact Support
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline" size="sm" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                        <Link href="/checkout">
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Go to Checkout
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Enhanced Search and Filters */}
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
@@ -1018,21 +1348,71 @@ export default function Orders() {
 
               {/* Enhanced Action Buttons */}
               <div className="flex gap-3 pt-4 border-t border-gray-200">
-                <Button
-                  onClick={() => handleDownloadInvoice(selectedOrder)}
-                  variant="outline"
-                  className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Download Invoice
-                </Button>
-                <Button
-                  onClick={() => window.open(`/track-order?order=${selectedOrder.orderNumber}`, '_blank')}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <Truck className="h-4 w-4 mr-2" />
-                  Track Order
-                </Button>
+                {selectedOrder.status === 'draft' ? (
+                  <Button
+                    onClick={() => {
+                      setIsDetailsDialogOpen(false);
+                      window.location.href = '/checkout';
+                    }}
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Complete Payment
+                  </Button>
+                ) : selectedOrder.status === 'pending' ? (
+                  <>
+                    <Button
+                      onClick={() => {
+                        if (confirm(`Initiate payment for order #${selectedOrder.orderNumber}? This will redirect you to the payment gateway.`)) {
+                          initiatePaymentMutation.mutate(selectedOrder._id);
+                          setIsDetailsDialogOpen(false);
+                        }
+                      }}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                      disabled={initiatePaymentMutation.isPending || isExpired}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      {initiatePaymentMutation.isPending ? 'Initiating...' : isExpired ? 'Expired' : 'Complete Payment'}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        console.log('🔄 Order data for cancellation (modal):', {
+                          _id: selectedOrder._id,
+                          orderNumber: selectedOrder.orderNumber,
+                          status: selectedOrder.status
+                        });
+                        if (confirm(`Are you sure you want to cancel order #${selectedOrder.orderNumber}? This will restore the items to your cart.`)) {
+                          cancelOrderMutation.mutate(selectedOrder._id);
+                          setIsDetailsDialogOpen(false);
+                        }
+                      }}
+                      variant="outline"
+                      className="flex-1 border-red-600 text-red-600 hover:bg-red-50"
+                      disabled={cancelOrderMutation.isPending}
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      {cancelOrderMutation.isPending ? 'Cancelling...' : 'Cancel Order'}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      onClick={() => handleDownloadInvoice(selectedOrder)}
+                      variant="outline"
+                      className="flex-1 border-blue-600 text-blue-600 hover:bg-blue-50"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Invoice
+                    </Button>
+                    <Button
+                      onClick={() => window.open(`/track-order?order=${selectedOrder.orderNumber}`, '_blank')}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <Truck className="h-4 w-4 mr-2" />
+                      Track Order
+                    </Button>
+                  </>
+                )}
                 <Button
                   onClick={() => setIsDetailsDialogOpen(false)}
                   variant="outline"

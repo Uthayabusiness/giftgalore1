@@ -239,6 +239,7 @@ export interface IOrder extends Document {
   shippingAddress: any;
   paymentId?: string;
   paymentStatus?: string;
+  paymentInitiatedAt?: Date;
   additionalInfo?: {
     message: string;
     updatedAt: Date;
@@ -253,8 +254,8 @@ const orderSchema = new Schema<IOrder>({
   orderNumber: { type: String, required: true, unique: true },
   status: { 
     type: String, 
-    default: 'pending', 
-    enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] 
+    default: 'confirmed', 
+    enum: ['confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] 
   },
   total: { type: Number, required: true },
   items: [{
@@ -267,6 +268,7 @@ const orderSchema = new Schema<IOrder>({
   shippingAddress: { type: Schema.Types.Mixed, required: true },
   paymentId: String,
   paymentStatus: String,
+  paymentInitiatedAt: Date,
   additionalInfo: {
     message: String,
     updatedAt: { type: Date, default: Date.now },

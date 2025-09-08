@@ -481,8 +481,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user._id;
       const user = await storage.getUser(userId);
       
+      console.log(`🔍 Orders request from user: ${userId} (Role: ${user?.role || 'user'})`);
+      
       // Admin can see all orders, users see only their orders
-      let orders = await storage.getOrders(user?.role === 'admin' ? undefined : userId);
+      const isAdmin = user?.role === 'admin';
+      let orders = await storage.getOrders(isAdmin ? undefined : userId);
+      
+      console.log(`📊 Retrieved ${orders.length} orders for ${isAdmin ? 'admin' : 'user'} ${userId}`);
       
       // Automatically populate missing items for all orders
       const populatedOrders = await Promise.all(
@@ -538,9 +543,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
       
+      // Debug order statuses
+      const statusCounts = {};
+      populatedOrders.forEach((order) => {
+        statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+      });
+      console.log('📊 Order status counts:', statusCounts);
+      
       console.log(`🚀 Sending ${populatedOrders.length} orders to frontend`);
       populatedOrders.forEach((order, index) => {
-        console.log(`Order ${index + 1}: ${order.orderNumber} - Items: ${order.items?.length || 0}`);
+        console.log(`Order ${index + 1}: ${order.orderNumber} - Status: ${order.status} - Items: ${order.items?.length || 0}`);
       });
       
       res.json(populatedOrders);
@@ -553,18 +565,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/orders/:id', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user._id;
+      const orderId = req.params.id;
       const user = await storage.getUser(userId);
-      const order = await storage.getOrderById(req.params.id);
+      
+      console.log(`🔍 Individual order request: User ${userId} requesting order ${orderId}`);
+      
+      const order = await storage.getOrderById(orderId);
       
       if (!order) {
+        console.log(`❌ Order not found: ${orderId}`);
         return res.status(404).json({ message: "Order not found" });
       }
 
       // Users can only see their own orders, admins can see all
-      if (user?.role !== 'admin' && order.userId !== userId) {
-        return res.status(403).json({ message: "Access denied" });
+      const isAdmin = user?.role === 'admin';
+      const isOwner = order.userId.toString() === userId.toString();
+      
+      if (!isAdmin && !isOwner) {
+        console.log(`🚨 Access denied: User ${userId} (${user?.role || 'user'}) trying to access order ${orderId} owned by ${order.userId}`);
+        return res.status(403).json({ message: "Access denied. You can only view your own orders." });
       }
 
+      console.log(`✅ Access granted: User ${userId} (${isAdmin ? 'admin' : 'owner'}) accessing order ${orderId}`);
       res.json(order);
     } catch (error) {
       console.error("Error fetching order:", error);
@@ -575,10 +597,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get order by order number (for tracking - no authentication required)
   app.get('/api/orders/track/:orderNumber', async (req, res) => {
     try {
-      const order = await storage.getOrderByOrderNumber(req.params.orderNumber);
+      const orderNumber = req.params.orderNumber;
+      console.log(`🔍 Public order tracking request for: ${orderNumber}`);
+      
+      const order = await storage.getOrderByOrderNumber(orderNumber);
       if (!order) {
+        console.log(`❌ Order not found for tracking: ${orderNumber}`);
         return res.status(404).json({ message: "Order not found" });
       }
+
+      console.log(`✅ Order found for public tracking: ${orderNumber} (Status: ${order.status})`);
 
       // Return basic order info for tracking (no sensitive data)
       const trackingInfo = {
@@ -602,37 +630,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/orders', isAuthenticated, async (req: any, res) => {
+  // Get order by order number (for authenticated users - with full details)
+  app.get('/api/orders/track/:orderNumber/authenticated', isAuthenticated, async (req: any, res) => {
     try {
-      console.log('📝 Order creation request received');
+      const orderNumber = req.params.orderNumber;
       const userId = req.user._id;
-      const { items, shippingAddress } = req.body;
+      const user = await storage.getUser(userId);
       
-      console.log('👤 User ID:', userId);
-      console.log('📦 Request body:', { items, shippingAddress });
+      console.log(`🔍 Authenticated order tracking request: User ${userId} requesting order ${orderNumber}`);
       
-      // Get cart items to create order
+      const order = await storage.getOrderByOrderNumber(orderNumber);
+      if (!order) {
+        console.log(`❌ Order not found for authenticated tracking: ${orderNumber}`);
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      // Check if user owns this order or is admin
+      const isAdmin = user?.role === 'admin';
+      const isOwner = order.userId.toString() === userId.toString();
+      
+      if (!isAdmin && !isOwner) {
+        console.log(`🚨 Access denied: User ${userId} trying to track order ${orderNumber} owned by ${order.userId}`);
+        return res.status(403).json({ message: "Access denied. You can only track your own orders." });
+      }
+
+      console.log(`✅ Authenticated tracking access granted: User ${userId} (${isAdmin ? 'admin' : 'owner'}) tracking order ${orderNumber}`);
+
+      // Return full order details for authenticated users
+      res.json(order);
+    } catch (error) {
+      console.error("Error fetching order for authenticated tracking:", error);
+      res.status(500).json({ message: "Failed to fetch order" });
+    }
+  });
+
+  // This endpoint is now deprecated - orders are created only after successful payment
+  app.post('/api/orders', isAuthenticated, async (req: any, res) => {
+    res.status(400).json({ 
+      message: "Orders are now created only after successful payment. Please use the payment flow." 
+    });
+  });
+
+  // New endpoint: Initiate payment directly from cart (creates order only after payment success)
+  app.post('/api/payments/initiate-from-cart', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user._id;
+      const { shippingAddress } = req.body;
+      
+      console.log('💳 Payment initiation from cart request:', { userId, shippingAddress });
+      
+      // Get cart items
       const cartItems = await storage.getCartItems(userId);
       console.log('🛍️ Cart items:', cartItems);
       
       if (cartItems.length === 0) {
         console.log('❌ Cart is empty');
         return res.status(400).json({ message: "Cart is empty" });
-      }
-
-      // Check for existing pending orders for this user
-      const existingPendingOrder = await Order.findOne({
-        userId: userId,
-        status: 'pending'
-      });
-
-      if (existingPendingOrder) {
-        console.log(`⚠️ User ${userId} already has a pending order: ${existingPendingOrder.orderNumber}`);
-        return res.status(400).json({ 
-          message: "You already have a pending order. Please complete or cancel it before placing a new order.",
-          existingOrderId: existingPendingOrder._id,
-          existingOrderNumber: existingPendingOrder.orderNumber
-        });
       }
 
       // Calculate total including delivery charges
@@ -647,41 +700,330 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return sum + itemTotal + deliveryCharge;
       }, 0);
 
-      // Prepare order items data
-      const orderItems = cartItems.map(item => ({
-        productId: new mongoose.Types.ObjectId(item.productId.toString()),
-        productName: item.product.name,
-        productImage: item.product.images?.[0] || '/placeholder-image.jpg',
-        price: parseFloat(item.product.price.toString()),
-        quantity: item.quantity
-      }));
+      // Get user details
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
 
-      // Generate order number
+      // Generate unique order number for payment
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+      console.log('🔢 Generated order number for payment:', orderNumber);
 
-      // Create order
-      const orderData = {
-        userId,
-        orderNumber,
-        total: total,
-        items: orderItems,
-        shippingAddress,
-        status: "pending" as const,
+      // Prepare customer details for Cashfree
+      const customerDetails = {
+        customer_id: userId,
+        customer_name: `${user.firstName} ${user.lastName}`,
+        customer_email: user.email,
+        customer_phone: user.mobileNumber,
       };
 
-      const order = await storage.createOrder(orderData);
-      console.log('✅ Order created successfully:', order);
+      // Create payment order data
+      const orderData = {
+        order_id: orderNumber,
+        order_amount: total,
+        order_currency: 'INR',
+        customer_details: customerDetails,
+        order_meta: {
+          return_url: `${req.protocol}://${req.get('host')}/orders`,
+          notify_url: `${req.protocol}://${req.get('host')}/api/payments/webhook`,
+          shipping_address: shippingAddress,
+        },
+        order_note: `Order for ${customerDetails.customer_name}`,
+      };
 
-      // Note: Cart will be cleared only after successful payment via webhook
-
-      res.json({ success: true, order });
-    } catch (error) {
-      console.error("❌ Error creating order:", error);
-      console.error("❌ Error details:", {
-        message: error.message,
-        stack: error.stack
+      const cashfreeOrder = await cashfreeService.createOrder(orderData);
+      
+      console.log('✅ Cashfree payment order created:', { 
+        orderNumber,
+        paymentSessionId: cashfreeOrder.payment_session_id 
       });
-      res.status(500).json({ message: "Failed to create order" });
+      
+      res.json({ 
+        success: true,
+        order: cashfreeOrder,
+        paymentSessionId: cashfreeOrder.payment_session_id,
+        orderNumber: orderNumber,
+        total: total
+      });
+    } catch (error) {
+      console.error('❌ Error initiating payment from cart:', error);
+      res.status(500).json({ message: 'Failed to initiate payment' });
+    }
+  });
+
+  // Initiate payment for draft order
+  app.post('/api/orders/:id/initiate-payment', isAuthenticated, async (req: any, res) => {
+    try {
+      const orderId = req.params.id;
+      const userId = req.user._id;
+      
+      console.log('💳 Payment initiation request:', { orderId, userId });
+      
+      // Find the order - ensure proper ObjectId conversion
+      const order = await Order.findOne({ 
+        _id: new mongoose.Types.ObjectId(orderId), 
+        userId: userId 
+      });
+      
+      if (!order) {
+        console.log('❌ Order not found for payment initiation:', { orderId, userId });
+        return res.status(404).json({ message: "Order not found" });
+      }
+      
+      // Only allow payment initiation for draft orders
+      if (order.status !== 'draft') {
+        return res.status(400).json({ 
+          message: `Only draft orders can initiate payment. Current status: ${order.status}` 
+        });
+      }
+      
+      // Update order status to pending when payment is initiated
+      await Order.findByIdAndUpdate(orderId, {
+        status: 'pending',
+        paymentInitiatedAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      console.log('✅ Order status updated to pending for payment:', { orderId, orderNumber: order.orderNumber });
+      
+      res.json({ 
+        message: "Payment initiated successfully", 
+        orderId,
+        orderNumber: order.orderNumber,
+        status: 'pending'
+      });
+    } catch (error) {
+      console.error("Error initiating payment:", error);
+      res.status(500).json({ message: "Failed to initiate payment" });
+    }
+  });
+
+  // Auto-cleanup expired orders every 5 minutes
+  setInterval(async () => {
+    try {
+      console.log('🧹 Auto-cleanup: Checking for expired pending orders...');
+      
+      // Cashfree payment timeout is typically 30 minutes
+      const paymentTimeoutMinutes = 30;
+      const timeoutDate = new Date(Date.now() - (paymentTimeoutMinutes * 60 * 1000));
+      
+      // Find pending orders that are older than the timeout period
+      const expiredOrders = await Order.find({
+        status: 'pending',
+        paymentInitiatedAt: { $lt: timeoutDate }
+      });
+      
+      if (expiredOrders.length > 0) {
+        console.log(`🔍 Auto-cleanup: Found ${expiredOrders.length} expired pending orders`);
+        
+        let deletedCount = 0;
+        for (const order of expiredOrders) {
+          try {
+            await Order.findByIdAndDelete(order._id);
+            deletedCount++;
+            console.log(`🗑️ Auto-cleanup: Deleted expired order: ${order.orderNumber}`);
+          } catch (error) {
+            console.error(`❌ Auto-cleanup: Failed to delete expired order ${order.orderNumber}:`, error);
+          }
+        }
+        
+        console.log(`✅ Auto-cleanup: Completed. Deleted ${deletedCount} expired orders.`);
+      }
+    } catch (error) {
+      console.error("❌ Auto-cleanup error:", error);
+    }
+  }, 5 * 60 * 1000); // Run every 5 minutes
+
+  // Manual cleanup endpoint (called by cron job or manually)
+  app.post('/api/orders/cleanup-expired', async (req: any, res) => {
+    try {
+      console.log('🧹 Starting cleanup of expired pending orders...');
+      
+      // Cashfree payment timeout is typically 30 minutes
+      const paymentTimeoutMinutes = 30;
+      const timeoutDate = new Date(Date.now() - (paymentTimeoutMinutes * 60 * 1000));
+      
+      // Find pending orders that are older than the timeout period
+      const expiredOrders = await Order.find({
+        status: 'pending',
+        paymentInitiatedAt: { $lt: timeoutDate }
+      });
+      
+      console.log(`🔍 Found ${expiredOrders.length} expired pending orders`);
+      
+      let deletedCount = 0;
+      
+      for (const order of expiredOrders) {
+        try {
+          // Delete the expired order
+          await Order.findByIdAndDelete(order._id);
+          deletedCount++;
+          console.log(`🗑️ Deleted expired order: ${order.orderNumber}`);
+        } catch (error) {
+          console.error(`❌ Failed to delete expired order ${order.orderNumber}:`, error);
+        }
+      }
+      
+      console.log(`✅ Cleanup completed. Deleted ${deletedCount} expired orders.`);
+      
+      res.json({ 
+        message: "Cleanup completed", 
+        expiredOrdersFound: expiredOrders.length,
+        deletedCount 
+      });
+    } catch (error) {
+      console.error("Error during order cleanup:", error);
+      res.status(500).json({ message: "Failed to cleanup expired orders" });
+    }
+  });
+
+  // Initiate payment for pending order
+  app.post('/api/orders/:id/initiate-payment', isAuthenticated, async (req: any, res) => {
+    try {
+      const orderId = req.params.id;
+      const userId = req.user._id;
+      
+      console.log('💳 Payment initiation request:', { orderId, userId });
+      
+      // Find the order - ensure proper ObjectId conversion
+      const order = await Order.findOne({ 
+        _id: new mongoose.Types.ObjectId(orderId), 
+        userId: userId 
+      });
+      
+      if (!order) {
+        console.log('❌ Order not found for payment initiation:', { orderId, userId });
+        return res.status(404).json({ message: "Order not found" });
+      }
+      
+      // Only allow payment initiation for pending orders
+      if (order.status !== 'pending') {
+        return res.status(400).json({ 
+          message: `Only pending orders can initiate payment. Current status: ${order.status}` 
+        });
+      }
+      
+      // Check if payment is still within timeout period (30 minutes)
+      const paymentTimeoutMinutes = 30;
+      const timeoutDate = new Date(Date.now() - (paymentTimeoutMinutes * 60 * 1000));
+      
+      if (order.paymentInitiatedAt && order.paymentInitiatedAt < timeoutDate) {
+        // Order has expired, cancel it
+        await Order.findByIdAndUpdate(orderId, {
+          status: 'cancelled',
+          updatedAt: new Date()
+        });
+        
+        // Restore items to cart
+        if (order.items && order.items.length > 0) {
+          console.log(`🔄 Restoring cart items for user ${userId} after order expiration`);
+          
+          // Clear existing cart first
+          await storage.clearCart(userId.toString());
+          
+          // Add items back to cart (skip products that no longer exist)
+          let restoredItems = 0;
+          let skippedItems = 0;
+          for (const item of order.items) {
+            try {
+              await storage.addToCart({
+                userId: userId,
+                productId: item.productId,
+                quantity: item.quantity
+              });
+              restoredItems++;
+            } catch (error) {
+              console.log(`⚠️ Skipping product ${item.productId} - ${error.message}`);
+              skippedItems++;
+            }
+          }
+          
+          console.log(`✅ Cart restoration completed: ${restoredItems} items restored, ${skippedItems} items skipped`);
+        }
+        
+        return res.status(400).json({ 
+          message: "Payment session has expired. Order has been automatically cancelled.",
+          expired: true
+        });
+      }
+      
+      // Create Cashfree payment order
+      const customerDetails = {
+        customer_id: userId,
+        customer_name: `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`,
+        customer_email: order.shippingAddress.email,
+        customer_phone: order.shippingAddress.phone,
+      };
+      
+      const orderData: CreateOrderRequest = {
+        order_id: order.orderNumber,
+        order_amount: order.total,
+        order_currency: 'INR',
+        customer_details: customerDetails,
+        order_meta: {
+          return_url: `${req.protocol}://${req.get('host')}/orders`,
+          notify_url: `${req.protocol}://${req.get('host')}/api/payments/webhook`,
+        },
+        order_note: `Order for ${customerDetails.customer_name}`,
+      };
+
+      const cashfreeOrder = await cashfreeService.createOrder(orderData);
+      
+      console.log('✅ Cashfree payment order created:', { 
+        orderId, 
+        orderNumber: order.orderNumber,
+        paymentSessionId: cashfreeOrder.payment_session_id 
+      });
+      
+      res.json({ 
+        success: true,
+        order: cashfreeOrder,
+        paymentSessionId: cashfreeOrder.payment_session_id,
+        orderId,
+        orderNumber: order.orderNumber
+      });
+    } catch (error) {
+      console.error("Error initiating payment:", error);
+      res.status(500).json({ message: "Failed to initiate payment" });
+    }
+  });
+
+  // Get time remaining for pending order
+  app.get('/api/orders/:id/time-remaining', isAuthenticated, async (req: any, res) => {
+    try {
+      const orderId = req.params.id;
+      const userId = req.user._id;
+      
+      const order = await Order.findOne({ 
+        _id: new mongoose.Types.ObjectId(orderId), 
+        userId: userId 
+      });
+      
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      
+      if (order.status !== 'pending') {
+        return res.status(400).json({ 
+          message: "Order is not pending" 
+        });
+      }
+      
+      const paymentTimeoutMinutes = 30;
+      const timeoutDate = new Date(order.paymentInitiatedAt.getTime() + (paymentTimeoutMinutes * 60 * 1000));
+      const now = new Date();
+      const timeRemaining = Math.max(0, timeoutDate.getTime() - now.getTime());
+      
+      res.json({
+        timeRemaining: timeRemaining,
+        timeRemainingMinutes: Math.ceil(timeRemaining / (60 * 1000)),
+        timeoutDate: timeoutDate,
+        isExpired: timeRemaining <= 0
+      });
+    } catch (error) {
+      console.error("Error getting time remaining:", error);
+      res.status(500).json({ message: "Failed to get time remaining" });
     }
   });
 
@@ -691,15 +1033,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const orderId = req.params.id;
       const userId = req.user._id;
       
-      // Find the order
-      const order = await Order.findOne({ _id: orderId, userId: userId });
+      console.log('🔄 Cancel order request:', { orderId, userId, orderIdType: typeof orderId });
+      
+      // Debug: List all orders for this user
+      try {
+        const allUserOrders = await Order.find({ userId: userId });
+        console.log('🔍 All orders for user:', allUserOrders.map(o => ({
+          id: o._id,
+          orderNumber: o.orderNumber,
+          status: o.status,
+          createdAt: o.createdAt
+        })));
+      } catch (debugError) {
+        console.log('❌ Debug query failed:', debugError.message);
+      }
+      
+      // Try to find the order with different approaches for debugging
+      let order = null;
+      
+      // First try with ObjectId conversion
+      try {
+        order = await Order.findOne({ 
+          _id: new mongoose.Types.ObjectId(orderId), 
+          userId: userId 
+        });
+        console.log('🔍 Search with ObjectId conversion result:', order ? 'Found' : 'Not found');
+      } catch (objectIdError) {
+        console.log('❌ ObjectId conversion failed:', objectIdError.message);
+      }
+      
+      // If not found, try with string comparison
+      if (!order) {
+        try {
+          order = await Order.findOne({ 
+            _id: orderId, 
+            userId: userId 
+          });
+          console.log('🔍 Search with string ID result:', order ? 'Found' : 'Not found');
+        } catch (stringError) {
+          console.log('❌ String ID search failed:', stringError.message);
+        }
+      }
+      
+      // If still not found, try to find any order with this ID (for debugging)
+      if (!order) {
+        try {
+          const anyOrder = await Order.findById(orderId);
+          if (anyOrder) {
+            console.log('🔍 Found order by ID (any user):', {
+              id: anyOrder._id,
+              orderNumber: anyOrder.orderNumber,
+              userId: anyOrder.userId,
+              status: anyOrder.status
+            });
+            
+            // Check if it's a user mismatch
+            if (anyOrder.userId.toString() !== userId.toString()) {
+              console.log('🚨 SECURITY ALERT: User mismatch detected!');
+              console.log('🚨 Order belongs to user:', anyOrder.userId.toString());
+              console.log('🚨 Current user is:', userId.toString());
+              console.log('🚨 This is expected behavior - users can only cancel their own orders');
+              console.log('🚨 Returning 403 - Access denied for user mismatch');
+              return res.status(403).json({ 
+                message: "Access denied. This order belongs to a different user account." 
+              });
+            }
+          } else {
+            console.log('🔍 Order not found in database');
+          }
+        } catch (findByIdError) {
+          console.log('❌ FindById failed:', findByIdError.message);
+        }
+      }
       
       if (!order) {
+        console.log('❌ Order not found:', { orderId, userId });
         return res.status(404).json({ message: "Order not found" });
       }
       
-      if (order.status !== 'pending') {
-        return res.status(400).json({ message: "Only pending orders can be cancelled" });
+      console.log('✅ Order found:', { 
+        orderId: order._id, 
+        orderNumber: order.orderNumber, 
+        status: order.status,
+        userId: order.userId 
+      });
+      
+      // Allow cancellation of pending, confirmed, and processing orders
+      const cancellableStatuses = ['pending', 'confirmed', 'processing'];
+      if (!cancellableStatuses.includes(order.status)) {
+        return res.status(400).json({ 
+          message: `Only ${cancellableStatuses.join(', ')} orders can be cancelled. Current status: ${order.status}` 
+        });
       }
       
       // Update order status to cancelled
@@ -709,21 +1133,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Restore cart items
+      let restoredItems = 0;
+      let skippedItems = 0;
+      
       if (order.items && order.items.length > 0) {
         console.log(`🔄 Restoring cart items for user ${userId} after order cancellation`);
         
         // Clear existing cart first
-        await storage.clearCart(userId);
+        await storage.clearCart(userId.toString());
         
-        // Add items back to cart
+        // Add items back to cart (skip products that no longer exist)
         for (const item of order.items) {
-          await storage.addToCart(userId, item.productId.toString(), item.quantity);
+          try {
+            await storage.addToCart({
+              userId: userId,
+              productId: item.productId,
+              quantity: item.quantity
+            });
+            restoredItems++;
+          } catch (error) {
+            console.log(`⚠️ Skipping product ${item.productId} - ${error.message}`);
+            skippedItems++;
+          }
         }
         
-        console.log(`✅ Cart restored with ${order.items.length} items after order cancellation`);
+        if (skippedItems > 0) {
+          console.log(`⚠️ Skipped ${skippedItems} items that no longer exist in the database`);
+        }
+        
+        console.log(`✅ Cart restoration completed: ${restoredItems} items restored, ${skippedItems} items skipped`);
       }
       
-      res.json({ message: "Order cancelled successfully", orderId });
+      res.json({ 
+        message: "Order cancelled successfully", 
+        orderId,
+        restoredItems: restoredItems || 0,
+        skippedItems: skippedItems || 0
+      });
     } catch (error) {
       console.error("Error cancelling order:", error);
       res.status(500).json({ message: "Failed to cancel order" });
@@ -1180,28 +1626,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { order_id, payment_status, payment_amount, payment_method } = webhookData.data;
             console.log(`✅ Payment Success - Order: ${order_id}, Amount: ₹${payment_amount}, Method: ${payment_method}`);
             
-            // Update order status in database
-            try {
-              const updatedOrder = await Order.findOneAndUpdate(
-                { orderNumber: order_id },
-                { 
-                  status: 'confirmed',
-                  paymentStatus: 'completed',
-                  paymentMethod: payment_method,
-                  paymentAmount: payment_amount,
-                  updatedAt: new Date()
-                },
-                { new: true }
-              );
-              console.log(`📝 Order ${order_id} status updated to confirmed`);
-              
-              // Clear cart only after successful payment
-              if (updatedOrder && updatedOrder.userId) {
-                await storage.clearCart(updatedOrder.userId);
-                console.log(`🛒 Cart cleared for user ${updatedOrder.userId} after successful payment`);
+            // Check if order already exists (for backward compatibility)
+            let existingOrder = await Order.findOne({ orderNumber: order_id });
+            
+            if (existingOrder) {
+              // Update existing order status
+              try {
+                const updatedOrder = await Order.findOneAndUpdate(
+                  { orderNumber: order_id },
+                  { 
+                    status: 'confirmed',
+                    paymentStatus: 'completed',
+                    paymentMethod: payment_method,
+                    paymentAmount: payment_amount,
+                    updatedAt: new Date()
+                  },
+                  { new: true }
+                );
+                console.log(`📝 Existing order ${order_id} status updated to confirmed`);
+                
+                // Clear cart only after successful payment
+                if (updatedOrder && updatedOrder.userId) {
+                  await storage.clearCart(updatedOrder.userId.toString());
+                  console.log(`🛒 Cart cleared for user ${updatedOrder.userId} after successful payment`);
+                }
+              } catch (dbError) {
+                console.error('❌ Database update failed:', dbError);
               }
-            } catch (dbError) {
-              console.error('❌ Database update failed:', dbError);
+            } else {
+              // Create new order only after successful payment
+              try {
+                // Get payment session data to retrieve order details
+                const paymentSessionData = await cashfreeService.getOrder(order_id);
+                
+                if (paymentSessionData && paymentSessionData.customer_details) {
+                  // Find user by email or phone
+                  const user = await storage.getUserByEmail(paymentSessionData.customer_details.customer_email) ||
+                               await storage.getUserByPhone(paymentSessionData.customer_details.customer_phone);
+                  
+                  if (user) {
+                    // Get cart items to create order
+                    const cartItems = await storage.getCartItems(user._id.toString());
+                    
+                    if (cartItems.length > 0) {
+                      // Calculate total including delivery charges
+                      const total = cartItems.reduce((sum, item) => {
+                        const price = parseFloat(item.product.price.toString());
+                        const itemTotal = price * item.quantity;
+                        
+                        // Add delivery charge if product has it
+                        const deliveryCharge = item.product.hasDeliveryCharge ? 
+                          parseFloat(item.product.deliveryCharge.toString()) : 0;
+                        
+                        return sum + itemTotal + deliveryCharge;
+                      }, 0);
+
+                      // Prepare order items data
+                      const orderItems = cartItems.map(item => ({
+                        productId: new mongoose.Types.ObjectId(item.productId.toString()),
+                        productName: item.product.name,
+                        productImage: item.product.images?.[0] || '/placeholder-image.jpg',
+                        price: parseFloat(item.product.price.toString()),
+                        quantity: item.quantity
+                      }));
+
+                      // Create order with confirmed status
+                      const orderData = {
+                        userId: new mongoose.Types.ObjectId(user._id.toString()),
+                        orderNumber: order_id,
+                        total: total,
+                        items: orderItems,
+                        shippingAddress: (paymentSessionData.order_meta as any)?.shipping_address || {},
+                        status: 'confirmed' as const,
+                        paymentStatus: 'completed',
+                        paymentMethod: payment_method,
+                        paymentAmount: payment_amount,
+                      };
+
+                      const newOrder = await storage.createOrder(orderData);
+                      console.log(`✅ New order created after successful payment: ${order_id}`);
+                      
+                      // Clear cart after successful order creation
+                      await storage.clearCart(user._id.toString());
+                      console.log(`🛒 Cart cleared for user ${user._id} after successful payment`);
+                    } else {
+                      console.log(`⚠️ No cart items found for user ${user._id} during payment success`);
+                    }
+                  } else {
+                    console.log(`⚠️ User not found for payment success: ${paymentSessionData.customer_details.customer_email}`);
+                  }
+                }
+              } catch (createError) {
+                console.error('❌ Failed to create order after payment success:', createError);
+              }
             }
           }
           break;
@@ -1230,14 +1747,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`🔄 Restoring cart items for user ${failedOrder.userId} after payment failure`);
                 
                 // Clear existing cart first
-                await storage.clearCart(failedOrder.userId);
+                await storage.clearCart(failedOrder.userId.toString());
                 
-                // Add items back to cart
+                // Add items back to cart (skip products that no longer exist)
+                let restoredItems = 0;
+                let skippedItems = 0;
                 for (const item of failedOrder.items) {
-                  await storage.addToCart(failedOrder.userId, item.productId.toString(), item.quantity);
+                  try {
+                    await storage.addToCart({
+                      userId: failedOrder.userId,
+                      productId: item.productId,
+                      quantity: item.quantity
+                    });
+                    restoredItems++;
+                  } catch (error) {
+                    console.log(`⚠️ Skipping product ${item.productId} - ${error.message}`);
+                    skippedItems++;
+                  }
                 }
                 
-                console.log(`✅ Cart restored with ${failedOrder.items.length} items after payment failure`);
+                if (skippedItems > 0) {
+                  console.log(`⚠️ Skipped ${skippedItems} items that no longer exist in the database`);
+                }
+                
+                console.log(`✅ Cart restoration completed: ${restoredItems} items restored, ${skippedItems} items skipped`);
               }
             } catch (dbError) {
               console.error('❌ Database update failed:', dbError);
@@ -1268,14 +1801,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`🔄 Restoring cart items for user ${cancelledOrder.userId} after payment cancellation`);
                 
                 // Clear existing cart first
-                await storage.clearCart(cancelledOrder.userId);
+                await storage.clearCart(cancelledOrder.userId.toString());
                 
-                // Add items back to cart
+                // Add items back to cart (skip products that no longer exist)
+                let restoredItems = 0;
+                let skippedItems = 0;
                 for (const item of cancelledOrder.items) {
-                  await storage.addToCart(cancelledOrder.userId, item.productId.toString(), item.quantity);
+                  try {
+                    await storage.addToCart({
+                      userId: cancelledOrder.userId,
+                      productId: item.productId,
+                      quantity: item.quantity
+                    });
+                    restoredItems++;
+                  } catch (error) {
+                    console.log(`⚠️ Skipping product ${item.productId} - ${error.message}`);
+                    skippedItems++;
+                  }
                 }
                 
-                console.log(`✅ Cart restored with ${cancelledOrder.items.length} items after payment cancellation`);
+                if (skippedItems > 0) {
+                  console.log(`⚠️ Skipped ${skippedItems} items that no longer exist in the database`);
+                }
+                
+                console.log(`✅ Cart restoration completed: ${restoredItems} items restored, ${skippedItems} items skipped`);
               }
             } catch (dbError) {
               console.error('❌ Database update failed:', dbError);

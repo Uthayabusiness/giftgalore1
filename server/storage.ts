@@ -21,6 +21,8 @@ export interface IStorage {
   getUser(id: string): Promise<IUser | undefined>;
   getUsers(): Promise<IUser[]>;
   upsertUser(user: Partial<IUser>): Promise<IUser>;
+  getUserByEmail(email: string): Promise<IUser | undefined>;
+  getUserByPhone(phone: string): Promise<IUser | undefined>;
   
   // Category operations
   getCategories(): Promise<ICategory[]>;
@@ -100,6 +102,16 @@ export class DatabaseStorage implements IStorage {
     );
     if (!user) throw new Error('Failed to upsert user');
     return user;
+  }
+
+  async getUserByEmail(email: string): Promise<IUser | undefined> {
+    const user = await User.findOne({ email: email.toLowerCase() }).exec();
+    return user || undefined;
+  }
+
+  async getUserByPhone(phone: string): Promise<IUser | undefined> {
+    const user = await User.findOne({ mobileNumber: phone }).exec();
+    return user || undefined;
   }
 
   // Category operations

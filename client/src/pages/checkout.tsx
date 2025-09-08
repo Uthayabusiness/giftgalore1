@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { useCart } from '@/contexts/cart-context';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { isUnauthorizedError } from '@/lib/authUtils';
 import Navigation from '@/components/navigation';
@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { CreditCard, Lock, MapPin, User, Phone, Mail, Gift, ArrowLeft, AlertCircle, Info, CheckCircle } from 'lucide-react';
+import { CreditCard, Lock, MapPin, User, Phone, Mail, Gift, ArrowLeft, AlertCircle, Info, CheckCircle, Clock } from 'lucide-react';
 import { validatePincodeForState, getPincodeRange, INDIAN_STATES_DATA, getDistrictsForState, INDIAN_STATES } from '@/lib/addressValidation';
 
 import { useForm } from 'react-hook-form';
@@ -59,11 +59,22 @@ export default function Checkout() {
       queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
     }
   }, [items.length, queryClient]);
+
+  // Check for pending orders
+  const { data: orders = [] } = useQuery<any[]>({
+    queryKey: ['/api/orders'],
+    enabled: isAuthenticated,
+    retry: false,
+  });
+
+  // No longer need to filter pending orders since we don't create them
   const [isProcessing, setIsProcessing] = useState(false);
   const [giftWrap, setGiftWrap] = useState(false);
   const [expressDelivery, setExpressDelivery] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentSessionId, setPaymentSessionId] = useState('');
+  const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
+  const [pendingOrderData, setPendingOrderData] = useState<any>(null);
   const [profileAddressLoaded, setProfileAddressLoaded] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState('India');
   const [addressValidation, setAddressValidation] = useState<{
@@ -444,9 +455,9 @@ export default function Checkout() {
     }
   };
 
-  const createOrderMutation = useMutation({
-    mutationFn: async (orderData: any) => {
-      const response = await apiRequest('POST', '/api/orders', orderData);
+  const initiatePaymentFromCartMutation = useMutation({
+    mutationFn: async (shippingAddress: any) => {
+      const response = await apiRequest('POST', '/api/payments/initiate-from-cart', { shippingAddress });
       return await response.json();
     },
     onError: (error) => {
@@ -463,13 +474,70 @@ export default function Checkout() {
         return;
       }
       toast({
-        title: "Order Creation Failed",
-        description: "Failed to create order. Please try again.",
+        title: "Payment Initiation Failed",
+        description: "Failed to initiate payment. Please try again.",
         variant: "destructive",
       });
     },
   });
 
+  const initiatePaymentMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const response = await apiRequest('POST', `/api/orders/${orderId}/initiate-payment`);
+      return await response.json();
+    },
+    onError: (error) => {
+      setIsProcessing(false);
+      toast({
+        title: "Payment Initiation Failed",
+        description: "Failed to initiate payment. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handlePaymentConfirmation = async () => {
+    if (!pendingOrderData) return;
+    
+    setIsProcessing(true);
+    setShowConfirmationDialog(false);
+    
+    try {
+      console.log('💳 Initiating payment for order:', pendingOrderData.order._id);
+      
+      // First, initiate payment (this changes status from draft to pending)
+      await initiatePaymentMutation.mutateAsync(pendingOrderData.order._id);
+      
+      // Then create payment order with Cashfree
+      const paymentOrder = await paymentService.createPaymentOrder({
+        orderId: pendingOrderData.order.orderNumber,
+        amount: pendingOrderData.total,
+        customerDetails: {
+          customerId: user?.id || '',
+          customerName: `${pendingOrderData.formData.firstName} ${pendingOrderData.formData.lastName}`,
+          customerEmail: pendingOrderData.formData.email,
+          customerPhone: pendingOrderData.formData.phone,
+        },
+        returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${pendingOrderData.order.orderNumber}`,
+      });
+
+      if (paymentOrder.success) {
+        setPaymentSessionId(paymentOrder.paymentSessionId);
+        setShowPaymentModal(true);
+      } else {
+        throw new Error('Failed to create payment order');
+      }
+    } catch (error) {
+      console.error('❌ Payment initiation error:', error);
+      toast({
+        title: "Payment Failed",
+        description: `There was an error initiating payment: ${error.message || 'Unknown error'}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const onSubmit = async (data: CheckoutForm) => {
     // Check if country is India
@@ -485,60 +553,55 @@ export default function Checkout() {
     setIsProcessing(true);
 
     try {
-      console.log('🛒 Starting checkout process...');
+      console.log('🛒 Starting payment process...');
       console.log('👤 User:', user);
       console.log('🛍️ Cart items:', items);
       console.log('💰 Total:', totalWithExtras);
       
-      // First create the order
-      console.log('📝 Creating order...');
-      const orderResponse = await createOrderMutation.mutateAsync({
-        shippingAddress: {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      phone: data.phone,
-      addressLine1: data.addressLine1,
-      addressLine2: data.addressLine2,
-      apartment: data.apartment,
-      country: data.country,
-      state: data.state,
-      district: data.district,
-      city: data.city,
-      pincode: data.pincode,
-      specialInstructions: data.specialInstructions,
-      giftWrap,
-      expressDelivery,
-        },
-      });
+      // Prepare shipping address
+      const shippingAddress = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        addressLine1: data.addressLine1,
+        addressLine2: data.addressLine2,
+        apartment: data.apartment,
+        country: data.country,
+        state: data.state,
+        district: data.district,
+        city: data.city,
+        pincode: data.pincode,
+        specialInstructions: data.specialInstructions,
+        giftWrap,
+        expressDelivery,
+      };
+
+      // Initiate payment directly from cart
+      console.log('💳 Initiating payment from cart...');
+      const paymentResponse = await initiatePaymentFromCartMutation.mutateAsync(shippingAddress);
       
-      console.log('✅ Order created successfully:', orderResponse);
+      console.log('✅ Payment initiated successfully:', paymentResponse);
 
-      if (orderResponse.success && orderResponse.order) {
-        // Create payment order with Cashfree
-        const paymentOrder = await paymentService.createPaymentOrder({
-          orderId: orderResponse.order.orderNumber,
-          amount: totalWithExtras,
-          customerDetails: {
-            customerId: user?.id || '',
-            customerName: `${data.firstName} ${data.lastName}`,
-            customerEmail: data.email,
-            customerPhone: data.phone,
-          },
-          returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderResponse.order.orderNumber}`,
-        });
-
-        if (paymentOrder.success) {
-          setPaymentSessionId(paymentOrder.paymentSessionId);
-          setShowPaymentModal(true);
-        } else {
-          throw new Error('Failed to create payment order');
-        }
+      if (paymentResponse.success && paymentResponse.paymentSessionId) {
+        // Redirect to Cashfree payment page
+        const paymentUrl = `https://sandbox.cashfree.com/pg/web/${paymentResponse.paymentSessionId}`;
+        console.log('🔗 Redirecting to payment page:', paymentUrl);
+        
+        // Store payment data for potential return
+        localStorage.setItem('pendingPayment', JSON.stringify({
+          orderNumber: paymentResponse.orderNumber,
+          total: paymentResponse.total,
+          formData: data
+        }));
+        
+        // Redirect to payment page
+        window.location.href = paymentUrl;
       } else {
-        throw new Error('Failed to create order');
+        throw new Error('Failed to initiate payment');
       }
     } catch (error) {
-      console.error('❌ Checkout error:', error);
+      console.error('❌ Payment initiation error:', error);
       console.error('❌ Error details:', {
         message: error.message,
         stack: error.stack,
@@ -546,8 +609,8 @@ export default function Checkout() {
       });
       
       toast({
-        title: "Checkout Failed",
-        description: `There was an error processing your order: ${error.message || 'Unknown error'}`,
+        title: "Payment Failed",
+        description: `There was an error initiating payment: ${error.message || 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {
@@ -597,6 +660,9 @@ export default function Checkout() {
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
+      
+      {/* Pending Orders Alert */}
+      {/* Pending orders warning removed - orders are now created only after payment success */}
       
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
@@ -1249,6 +1315,102 @@ export default function Checkout() {
           </div>
         </form>
       </div>
+
+      {/* Order Confirmation Dialog */}
+      {showConfirmationDialog && pendingOrderData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-100 rounded-full">
+                  <CreditCard className="h-6 w-6 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Confirm Your Order</h2>
+              </div>
+              
+              <div className="space-y-4 mb-6">
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">Order Summary</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>Order Number:</span>
+                      <span className="font-medium">{pendingOrderData.order.orderNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total Amount:</span>
+                      <span className="font-bold text-lg">₹{pendingOrderData.total.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Items:</span>
+                      <span>{items.length} item(s)</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="flex items-start gap-2">
+                    <div className="p-1 bg-blue-500 rounded-full mt-0.5">
+                      <CreditCard className="h-3 w-3 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-blue-900 mb-1">Payment Information</h4>
+                      <p className="text-sm text-blue-800">
+                        You will be redirected to our secure payment gateway to complete your purchase. 
+                        Your order will be confirmed only after successful payment.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <div className="flex items-start gap-2">
+                    <div className="p-1 bg-yellow-500 rounded-full mt-0.5">
+                      <Clock className="h-3 w-3 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-yellow-900 mb-1">Payment Timeout</h4>
+                      <p className="text-sm text-yellow-800">
+                        You have 30 minutes to complete payment. If payment is not completed within this time, 
+                        your order will be automatically cancelled.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowConfirmationDialog(false);
+                    setPendingOrderData(null);
+                  }}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handlePaymentConfirmation}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Proceed to Pay
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cashfree Payment Modal */}
       {showPaymentModal && (
