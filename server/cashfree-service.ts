@@ -69,7 +69,7 @@ export class CashfreeService {
   private getHeaders() {
     return {
       'Content-Type': 'application/json',
-      'x-api-version': '2023-08-01',
+      'x-api-version': '2022-09-01',
       'x-client-id': this.appId,
       'x-client-secret': this.secretKey,
     };

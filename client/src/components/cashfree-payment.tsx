@@ -53,10 +53,39 @@ export default function CashfreePayment({
     script.onload = () => {
       console.log('📦 Cashfree SDK loaded from CDN');
       console.log('🌐 window.cashfree after load:', !!window.cashfree);
-      // Wait a bit for the SDK to fully initialize
-      setTimeout(() => {
-        initializeCashfree();
-      }, 1000);
+      console.log('🔍 Available window properties:', Object.keys(window).filter(key => key.toLowerCase().includes('cashfree')));
+      
+      // Try multiple approaches to find Cashfree
+      let retries = 0;
+      const maxRetries = 15;
+      const checkCashfree = () => {
+        // Check multiple possible locations for Cashfree
+        const cashfree = window.cashfree || window.Cashfree || (window as any).CashfreePG;
+        
+        if (cashfree) {
+          console.log('✅ Cashfree found:', typeof cashfree);
+          console.log('🔧 Available methods:', Object.getOwnPropertyNames(cashfree));
+          initializeCashfree();
+        } else if (retries < maxRetries) {
+          retries++;
+          console.log(`⏳ Waiting for Cashfree... (attempt ${retries}/${maxRetries})`);
+          console.log('🔍 Current window.cashfree:', !!window.cashfree);
+          console.log('🔍 Current window.Cashfree:', !!(window as any).Cashfree);
+          setTimeout(checkCashfree, 300);
+        } else {
+          console.error('❌ Cashfree not available after maximum retries');
+          console.log('🔍 Final window inspection:', {
+            cashfree: !!window.cashfree,
+            Cashfree: !!(window as any).Cashfree,
+            CashfreePG: !!(window as any).CashfreePG,
+            allKeys: Object.keys(window).filter(key => key.toLowerCase().includes('cashfree'))
+          });
+          onFailure(new Error('Cashfree SDK not available after loading'));
+        }
+      };
+      
+      // Start checking after a short delay
+      setTimeout(checkCashfree, 200);
     };
     
     script.onerror = (error) => {
@@ -80,46 +109,95 @@ export default function CashfreePayment({
     console.log('🔧 Initializing Cashfree from CDN...');
     console.log('📋 Payment Session ID:', paymentSessionId);
     console.log('🆔 Order ID:', orderId);
-    console.log('🌐 window.cashfree available:', !!window.cashfree);
     
-    if (!window.cashfree) {
+    // Validate payment session ID
+    if (!paymentSessionId || paymentSessionId.trim() === '') {
+      console.error('❌ Payment session ID is empty or invalid:', paymentSessionId);
+      onFailure(new Error('Payment session ID is required'));
+      return;
+    }
+    
+    console.log('✅ Payment session ID validation passed:', paymentSessionId);
+    
+    // Try multiple possible locations for Cashfree
+    const cashfree = window.cashfree || window.Cashfree || (window as any).CashfreePG;
+    console.log('🌐 Cashfree available:', !!cashfree);
+    console.log('🔍 Cashfree type:', typeof cashfree);
+    
+    if (!cashfree) {
       console.error('❌ Cashfree SDK not available');
       onFailure(new Error('Cashfree SDK not loaded'));
       return;
     }
     
     try {
-      // Initialize Cashfree using CDN
-      const cashfree = window.cashfree({
-        mode: 'production', // Use 'sandbox' for testing
-      });
+      // Initialize Cashfree using CDN - try different initialization methods
+      console.log('🔧 Attempting Cashfree initialization...');
+      
+      let cashfreeInstance;
+      
+      // Method 1: Try calling as function (recommended approach from documentation)
+      try {
+        cashfreeInstance = cashfree({
+          mode: 'sandbox', // Use 'sandbox' for testing
+        });
+        console.log('✅ Cashfree initialized with function call');
+      } catch (functionError) {
+        console.log('⚠️ Function call failed, trying constructor:', functionError.message);
+        
+        // Method 2: Try calling as constructor
+        try {
+          cashfreeInstance = new cashfree({
+            mode: 'sandbox', // Use 'sandbox' for testing
+          });
+          console.log('✅ Cashfree initialized with constructor');
+        } catch (constructorError) {
+          console.log('⚠️ Constructor failed, trying direct initialization:', constructorError.message);
+          
+          // Method 3: Try direct initialization
+          cashfreeInstance = cashfree;
+          console.log('✅ Using Cashfree directly');
+        }
+      }
 
-      cashfreeRef.current = cashfree;
+      cashfreeRef.current = cashfreeInstance;
 
       // Initialize payment session
       console.log('🚀 Initializing payment session...');
-      cashfree.initialize({
-        paymentSessionId: paymentSessionId,
-        returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderId}`,
-      });
-
-      // Handle payment events
-      cashfree.on('PAYMENT_SUCCESS', (data: any) => {
-        console.log('✅ Payment successful:', data);
-        onSuccess(data);
-      });
-
-      cashfree.on('PAYMENT_FAILED', (data: any) => {
-        console.log('❌ Payment failed:', data);
-        onFailure(data);
-      });
-
-      cashfree.on('PAYMENT_USER_DROPPED', (data: any) => {
-        console.log('👤 Payment user dropped:', data);
-        onClose();
-      });
+      console.log('🔍 Cashfree instance methods:', Object.getOwnPropertyNames(cashfreeInstance));
       
-      console.log('✅ Cashfree initialized successfully');
+      // Use the correct Cashfree method - 'checkout' for payment sessions with paymentSessionId
+      if (typeof cashfreeInstance.checkout === 'function') {
+        console.log('🚀 Using cashfree.checkout() method (correct for paymentSessionId)...');
+        const checkoutParams = {
+          paymentSessionId: paymentSessionId,
+          returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderId}`,
+          redirectTarget: "_blank"
+        };
+        
+        console.log('📋 Checkout Parameters:', checkoutParams);
+        console.log('🔍 Payment Session ID Type:', typeof paymentSessionId);
+        console.log('🔍 Payment Session ID Length:', paymentSessionId?.length);
+        console.log('🔍 Payment Session ID Preview:', paymentSessionId?.substring(0, 20) + '...');
+        
+        // Use checkout() method with proper parameters
+        cashfreeInstance.checkout(checkoutParams);
+        console.log('✅ Checkout initiated successfully');
+      } else if (typeof cashfreeInstance.pay === 'function') {
+        console.log('🚀 Using cashfree.pay() method as fallback...');
+        cashfreeInstance.pay(paymentSessionId);
+      } else if (typeof cashfreeInstance.create === 'function') {
+        console.log('⚠️ Using cashfree.create() method (not recommended for paymentSessionId)...');
+        // create() is for UI components, not payment sessions
+        throw new Error('create() method is for UI components, not payment sessions. Use checkout() instead.');
+      } else {
+        throw new Error('No checkout, pay, or create method found on Cashfree instance');
+      }
+
+      // Note: For checkout() method, we don't need event listeners
+      // The payment flow is handled by Cashfree's hosted page
+      // and will redirect back to our returnUrl
+      console.log('✅ Cashfree checkout initiated successfully');
     } catch (error) {
       console.error('❌ Error initializing Cashfree:', error);
       onFailure(error);
@@ -131,19 +209,11 @@ export default function CashfreePayment({
     console.log('🔧 Cashfree ref:', cashfreeRef.current);
     
     if (cashfreeRef.current) {
-      console.log('🚀 Redirecting to payment...');
-      try {
-        cashfreeRef.current.redirect();
-      } catch (error) {
-        console.error('❌ Payment redirect error:', error);
-        onFailure(error);
-      }
+      console.log('✅ Payment already initiated via checkout() method');
+      console.log('🚀 Cashfree checkout should have redirected automatically');
     } else {
-      console.warn('⚠️ Cashfree not initialized, using fallback payment method');
-      // Fallback: Redirect to Cashfree payment page directly
-      const paymentUrl = `https://payments.cashfree.com/forms/${paymentSessionId}`;
-      console.log('🔄 Redirecting to payment URL:', paymentUrl);
-      window.open(paymentUrl, '_blank');
+      console.warn('⚠️ Cashfree not initialized');
+      onFailure(new Error('Cashfree not initialized'));
     }
   };
 
