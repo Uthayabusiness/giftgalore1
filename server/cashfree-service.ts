@@ -39,6 +39,12 @@ export interface CreateOrderResponse {
   order_status: string;
   order_tags?: any;
   payment_session_id: string;
+  payment_session?: {
+    id: string;
+    url: string;
+  };
+  payment_link?: string;
+  payment_url?: string;
 }
 
 export interface PaymentSessionResponse {

@@ -100,21 +100,81 @@ export default function Orders() {
       console.log('✅ Payment initiated successfully:', data);
       
       // Redirect to Cashfree payment page
-      if (data.paymentSessionId && data.paymentUrl) {
+      if (data.paymentSessionId) {
         toast({
           title: "Payment Initiated",
           description: "Redirecting to payment gateway...",
           variant: "default",
         });
         
-        // Redirect to Cashfree payment page
-        console.log('🔗 Redirecting to payment page:', data.paymentUrl);
-        window.location.href = data.paymentUrl;
-      } else if (data.paymentSessionId) {
-        // Fallback: construct payment URL manually
-        const paymentUrl = `https://sandbox.cashfree.com/pg/web/session/${data.paymentSessionId}`;
-        console.log('🔗 Redirecting to payment page (fallback):', paymentUrl);
-        window.location.href = paymentUrl;
+        // Use Cashfree JavaScript SDK for payment initiation (required for v3)
+        const sessionId = data.paymentSessionId;
+
+        console.log('🔗 Payment Session ID:', sessionId);
+        console.log('📝 Using Cashfree JavaScript SDK for payment initiation...');
+
+        const initiatePayment = () => {
+          try {
+            console.log('🚀 Initializing Cashfree payment with SDK...');
+            
+            // Initialize Cashfree with PRODUCTION mode
+            const cashfree = new window.Cashfree({
+              mode: 'PRODUCTION'
+            });
+
+            // Initiate payment using the SDK with correct callback-based method signature
+            cashfree.pay({
+              paymentSessionId: sessionId,
+              onSuccess: function(data) {
+                console.log('✅ Payment success:', data);
+                toast({
+                  title: "Payment Successful",
+                  description: "Your payment has been processed successfully!",
+                });
+                // Redirect to orders page
+                window.location.href = '/orders';
+              },
+              onFailure: function(err) {
+                console.error('❌ Payment failed:', err);
+                toast({
+                  title: "Payment Failed",
+                  description: "Payment could not be completed. Please try again.",
+                  variant: "destructive",
+                });
+              }
+            });
+
+          } catch (error) {
+            console.error('❌ Error initializing payment:', error);
+            toast({
+              title: "Payment Error",
+              description: "Failed to initialize payment. Please try again.",
+              variant: "destructive",
+            });
+          }
+        };
+
+        // Load Cashfree SDK if not already loaded
+        if (!window.Cashfree) {
+          console.log('📦 Loading Cashfree SDK...');
+          const script = document.createElement('script');
+          script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+          script.onload = () => {
+            console.log('✅ Cashfree SDK loaded successfully');
+            initiatePayment();
+          };
+          script.onerror = () => {
+            console.error('❌ Failed to load Cashfree SDK');
+            toast({
+              title: "Payment Error",
+              description: "Failed to load payment system. Please try again.",
+              variant: "destructive",
+            });
+          };
+          document.head.appendChild(script);
+        } else {
+          initiatePayment();
+        }
       } else {
         toast({
           title: "Payment Initiation Failed",

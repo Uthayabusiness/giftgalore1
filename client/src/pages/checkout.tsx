@@ -560,21 +560,21 @@ export default function Checkout() {
       
       // Prepare shipping address
       const shippingAddress = {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        phone: data.phone,
-        addressLine1: data.addressLine1,
-        addressLine2: data.addressLine2,
-        apartment: data.apartment,
-        country: data.country,
-        state: data.state,
-        district: data.district,
-        city: data.city,
-        pincode: data.pincode,
-        specialInstructions: data.specialInstructions,
-        giftWrap,
-        expressDelivery,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      phone: data.phone,
+      addressLine1: data.addressLine1,
+      addressLine2: data.addressLine2,
+      apartment: data.apartment,
+      country: data.country,
+      state: data.state,
+      district: data.district,
+      city: data.city,
+      pincode: data.pincode,
+      specialInstructions: data.specialInstructions,
+      giftWrap,
+      expressDelivery,
       };
 
       // Initiate payment directly from cart
@@ -584,10 +584,6 @@ export default function Checkout() {
       console.log('✅ Payment initiated successfully:', paymentResponse);
 
       if (paymentResponse.success && paymentResponse.paymentSessionId) {
-        // Redirect to Cashfree payment page
-        const paymentUrl = `https://sandbox.cashfree.com/pg/web/session/${paymentResponse.paymentSessionId}`;
-        console.log('🔗 Redirecting to payment page:', paymentUrl);
-        
         // Store payment data for potential return
         localStorage.setItem('pendingPayment', JSON.stringify({
           orderNumber: paymentResponse.orderNumber,
@@ -595,8 +591,74 @@ export default function Checkout() {
           formData: data
         }));
         
-        // Redirect to payment page
-        window.location.href = paymentUrl;
+      // Use Cashfree JavaScript SDK for payment initiation (required for v3)
+      const sessionId = paymentResponse.paymentSessionId;
+
+      console.log('🔗 Payment Session ID:', sessionId);
+      console.log('📝 Using Cashfree JavaScript SDK for payment initiation...');
+
+      const initiatePayment = () => {
+        try {
+          console.log('🚀 Initializing Cashfree payment with SDK...');
+
+          // Initialize Cashfree with PRODUCTION mode
+          const cashfree = new window.Cashfree({
+            mode: 'PRODUCTION'
+          });
+
+          // Initiate payment using the SDK with correct callback-based method signature
+          cashfree.pay({
+            paymentSessionId: sessionId,
+            onSuccess: function(data) {
+              console.log('✅ Payment success:', data);
+              toast({
+                title: "Payment Successful",
+                description: "Your payment has been processed successfully!",
+              });
+              // Redirect to orders page
+              window.location.href = '/orders';
+            },
+            onFailure: function(err) {
+              console.error('❌ Payment failed:', err);
+              toast({
+                title: "Payment Failed",
+                description: "Payment could not be completed. Please try again.",
+                variant: "destructive",
+              });
+            }
+          });
+
+        } catch (error) {
+          console.error('❌ Error initializing payment:', error);
+          toast({
+            title: "Payment Error",
+            description: "Failed to initialize payment. Please try again.",
+            variant: "destructive",
+          });
+        }
+      };
+
+      // Load Cashfree SDK if not already loaded
+      if (!window.Cashfree) {
+        console.log('📦 Loading Cashfree SDK...');
+        const script = document.createElement('script');
+        script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+        script.onload = () => {
+          console.log('✅ Cashfree SDK loaded successfully');
+          initiatePayment();
+        };
+        script.onerror = () => {
+          console.error('❌ Failed to load Cashfree SDK');
+          toast({
+            title: "Payment Error",
+            description: "Failed to load payment system. Please try again.",
+            variant: "destructive",
+          });
+        };
+        document.head.appendChild(script);
+      } else {
+        initiatePayment();
+      }
       } else {
         throw new Error('Failed to initiate payment');
       }

@@ -743,6 +743,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         paymentSessionId: cashfreeOrder.payment_session_id 
       });
       
+      // Debug: Log the full Cashfree response to see what fields are available
+      console.log('🔍 Full Cashfree API response:', JSON.stringify(cashfreeOrder, null, 2));
+      
+      // Cashfree v3 Payment Sessions don't provide user-facing URLs
+      // The paymentSessionId must be used with the Cashfree JavaScript SDK
+      console.log('📝 Note: Cashfree v3 requires JavaScript SDK for payment initiation');
+      console.log('🔑 Payment Session ID for SDK:', cashfreeOrder.payment_session_id);
+      
       res.json({ 
         success: true,
         order: cashfreeOrder,
@@ -838,14 +846,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         paymentSessionId: cashfreeOrder.payment_session_id 
       });
       
+      // Debug: Log the full Cashfree response to see what fields are available
+      console.log('🔍 Full Cashfree API response:', JSON.stringify(cashfreeOrder, null, 2));
+      
+      // Cashfree v3 Payment Sessions don't provide user-facing URLs
+      // The paymentSessionId must be used with the Cashfree JavaScript SDK
+      console.log('📝 Note: Cashfree v3 requires JavaScript SDK for payment initiation');
+      console.log('🔑 Payment Session ID for SDK:', cashfreeOrder.payment_session_id);
+      
       res.json({ 
         success: true,
         message: "Payment initiated successfully", 
         orderId,
         orderNumber: order.orderNumber,
         status: 'pending',
-        paymentSessionId: cashfreeOrder.payment_session_id,
-        paymentUrl: `https://sandbox.cashfree.com/pg/web/session/${cashfreeOrder.payment_session_id}`
+        paymentSessionId: cashfreeOrder.payment_session_id
       });
     } catch (error) {
       console.error("Error initiating payment:", error);
@@ -1646,7 +1661,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         order_meta: {
           return_url: returnUrl,
-          notify_url: `https://giftgalore-jfnb.onrender.com/api/payments/webhook`,
+          notify_url: process.env.NODE_ENV === 'production' 
+            ? `https://giftgalore-jfnb.onrender.com/api/payments/webhook`
+            : `https://giftgalore-jfnb.onrender.com/api/payments/webhook`,
         },
         order_note: `Order for ${customerDetails.customerName}`,
       };
