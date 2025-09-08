@@ -725,8 +725,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         order_currency: 'INR',
         customer_details: customerDetails,
         order_meta: {
-          return_url: `${req.protocol}://${req.get('host')}/orders`,
-          notify_url: `${req.protocol}://${req.get('host')}/api/payments/webhook`,
+          return_url: process.env.NODE_ENV === 'production' 
+            ? `https://${req.get('host')}/orders`
+            : `https://giftgalore-jfnb.onrender.com/orders`,
+          notify_url: process.env.NODE_ENV === 'production'
+            ? `https://${req.get('host')}/api/payments/webhook`
+            : `https://giftgalore-jfnb.onrender.com/api/payments/webhook`,
           shipping_address: shippingAddress,
         },
         order_note: `Order for ${customerDetails.customer_name}`,
@@ -771,27 +775,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Order not found" });
       }
       
-      // Only allow payment initiation for draft orders
-      if (order.status !== 'draft') {
+      // Allow payment initiation for draft and pending orders (backward compatibility)
+      if (!['draft', 'pending'].includes(order.status)) {
         return res.status(400).json({ 
-          message: `Only draft orders can initiate payment. Current status: ${order.status}` 
+          message: `Only draft or pending orders can initiate payment. Current status: ${order.status}` 
         });
       }
       
-      // Update order status to pending when payment is initiated
-      await Order.findByIdAndUpdate(orderId, {
-        status: 'pending',
+      // Update order status to pending when payment is initiated (if not already pending)
+      const updateData: any = {
         paymentInitiatedAt: new Date(),
+      };
+      
+      if (order.status === 'draft') {
+        updateData.status = 'pending';
+      }
+      
+      await Order.findByIdAndUpdate(orderId, {
+        ...updateData,
         updatedAt: new Date()
       });
       
       console.log('✅ Order status updated to pending for payment:', { orderId, orderNumber: order.orderNumber });
       
+      // Get user details for Cashfree
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Prepare customer details for Cashfree
+      const customerDetails = {
+        customer_id: userId,
+        customer_name: `${user.firstName} ${user.lastName}`,
+        customer_email: user.email,
+        customer_phone: user.mobileNumber,
+      };
+
+      // Create payment order data for Cashfree
+      const cashfreeOrderData = {
+        order_id: order.orderNumber,
+        order_amount: order.total,
+        order_currency: 'INR',
+        customer_details: customerDetails,
+        order_meta: {
+          return_url: process.env.NODE_ENV === 'production' 
+            ? `https://${req.get('host')}/orders`
+            : `https://giftgalore-jfnb.onrender.com/orders`,
+          notify_url: process.env.NODE_ENV === 'production'
+            ? `https://${req.get('host')}/api/payments/webhook`
+            : `https://giftgalore-jfnb.onrender.com/api/payments/webhook`,
+          shipping_address: order.shippingAddress,
+        },
+        order_note: `Order for ${customerDetails.customer_name}`,
+      };
+
+      const cashfreeOrder = await cashfreeService.createOrder(cashfreeOrderData);
+      
+      console.log('✅ Cashfree payment order created:', { 
+        orderId, 
+        orderNumber: order.orderNumber,
+        paymentSessionId: cashfreeOrder.payment_session_id 
+      });
+      
       res.json({ 
+        success: true,
         message: "Payment initiated successfully", 
         orderId,
         orderNumber: order.orderNumber,
-        status: 'pending'
+        status: 'pending',
+        paymentSessionId: cashfreeOrder.payment_session_id,
+        paymentUrl: `https://sandbox.cashfree.com/pg/web/${cashfreeOrder.payment_session_id}`
       });
     } catch (error) {
       console.error("Error initiating payment:", error);
@@ -875,6 +929,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error during order cleanup:", error);
       res.status(500).json({ message: "Failed to cleanup expired orders" });
+    }
+  });
+
+  // Cleanup all pending orders (for migration to new system)
+  app.post('/api/orders/cleanup-all-pending', isAdmin, async (req: any, res) => {
+    try {
+      console.log('🧹 Starting cleanup of ALL pending orders (migration)...');
+      
+      // Find all pending orders
+      const pendingOrders = await Order.find({
+        status: 'pending'
+      });
+      
+      console.log(`🔍 Found ${pendingOrders.length} pending orders to clean up`);
+      
+      let deletedCount = 0;
+      
+      for (const order of pendingOrders) {
+        try {
+          // Delete the pending order
+          await Order.findByIdAndDelete(order._id);
+          deletedCount++;
+          console.log(`🗑️ Deleted pending order: ${order.orderNumber}`);
+        } catch (deleteError) {
+          console.error(`❌ Failed to delete order ${order.orderNumber}:`, deleteError);
+        }
+      }
+      
+      console.log(`✅ Migration cleanup completed. Deleted ${deletedCount} pending orders.`);
+      
+      res.json({ 
+        message: `Migration cleanup completed. Deleted ${deletedCount} pending orders.`,
+        deletedCount,
+        totalFound: pendingOrders.length
+      });
+    } catch (error) {
+      console.error("❌ Error during migration cleanup:", error);
+      res.status(500).json({ message: "Failed to cleanup pending orders" });
     }
   });
 

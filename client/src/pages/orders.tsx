@@ -100,20 +100,27 @@ export default function Orders() {
       console.log('✅ Payment initiated successfully:', data);
       
       // Redirect to Cashfree payment page
-      if (data.paymentSessionId) {
-        // In a real implementation, you would redirect to Cashfree payment page
-        // For now, we'll show a success message and refresh the page
+      if (data.paymentSessionId && data.paymentUrl) {
         toast({
           title: "Payment Initiated",
           description: "Redirecting to payment gateway...",
           variant: "default",
         });
         
-        // Simulate payment success for demo purposes
-        setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
-          queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
-        }, 2000);
+        // Redirect to Cashfree payment page
+        console.log('🔗 Redirecting to payment page:', data.paymentUrl);
+        window.location.href = data.paymentUrl;
+      } else if (data.paymentSessionId) {
+        // Fallback: construct payment URL manually
+        const paymentUrl = `https://sandbox.cashfree.com/pg/web/${data.paymentSessionId}`;
+        console.log('🔗 Redirecting to payment page (fallback):', paymentUrl);
+        window.location.href = paymentUrl;
+      } else {
+        toast({
+          title: "Payment Initiation Failed",
+          description: "No payment session ID received",
+          variant: "destructive",
+        });
       }
     },
     onError: (error: any) => {
