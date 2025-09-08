@@ -19,6 +19,8 @@ interface Product {
   images: string[];
   isFeatured: boolean;
   tags: string[];
+  hasDeliveryCharge: boolean;
+  deliveryCharge: number;
 }
 
 interface ProductCardProps {
@@ -132,13 +134,25 @@ export default function ProductCard({ product }: ProductCardProps) {
           </p>
           
                       <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold text-primary" data-testid={`text-product-price-${product._id}`}>
-                  ₹{parseFloat(product.price).toLocaleString()}
-                </span>
-                {product.originalPrice && (
-                  <span className="text-sm text-muted-foreground line-through" data-testid={`text-original-price-${product._id}`}>
-                    ₹{parseFloat(product.originalPrice).toLocaleString()}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-bold text-primary" data-testid={`text-product-price-${product._id}`}>
+                    ₹{parseFloat(product.price).toLocaleString()}
+                  </span>
+                  {product.originalPrice && (
+                    <span className="text-sm text-muted-foreground line-through" data-testid={`text-original-price-${product._id}`}>
+                      ₹{parseFloat(product.originalPrice).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {product.hasDeliveryCharge && (
+                  <span className="text-xs text-muted-foreground">
+                    + ₹{product.deliveryCharge} delivery
+                  </span>
+                )}
+                {!product.hasDeliveryCharge && (
+                  <span className="text-xs text-green-600 font-medium">
+                    Free delivery
                   </span>
                 )}
               </div>

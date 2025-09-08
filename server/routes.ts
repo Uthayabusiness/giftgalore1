@@ -580,10 +580,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Cart is empty" });
       }
 
-      // Calculate total
+      // Check for existing pending orders for this user
+      const existingPendingOrder = await Order.findOne({
+        userId: userId,
+        status: 'pending'
+      });
+
+      if (existingPendingOrder) {
+        console.log(`⚠️ User ${userId} already has a pending order: ${existingPendingOrder.orderNumber}`);
+        return res.status(400).json({ 
+          message: "You already have a pending order. Please complete or cancel it before placing a new order.",
+          existingOrderId: existingPendingOrder._id,
+          existingOrderNumber: existingPendingOrder.orderNumber
+        });
+      }
+
+      // Calculate total including delivery charges
       const total = cartItems.reduce((sum, item) => {
         const price = parseFloat(item.product.price.toString());
-        return sum + (price * item.quantity);
+        const itemTotal = price * item.quantity;
+        
+        // Add delivery charge if product has it
+        const deliveryCharge = item.product.hasDeliveryCharge ? 
+          parseFloat(item.product.deliveryCharge.toString()) : 0;
+        
+        return sum + itemTotal + deliveryCharge;
       }, 0);
 
       // Prepare order items data
@@ -611,9 +632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const order = await storage.createOrder(orderData);
       console.log('✅ Order created successfully:', order);
 
-      // Clear cart
-      await storage.clearCart(userId);
-      console.log('🛒 Cart cleared');
+      // Note: Cart will be cleared only after successful payment via webhook
 
       res.json({ success: true, order });
     } catch (error) {
@@ -623,6 +642,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stack: error.stack
       });
       res.status(500).json({ message: "Failed to create order" });
+    }
+  });
+
+  // Cancel pending order endpoint
+  app.delete('/api/orders/:id/cancel', isAuthenticated, async (req: any, res) => {
+    try {
+      const orderId = req.params.id;
+      const userId = req.user._id;
+      
+      // Find the order
+      const order = await Order.findOne({ _id: orderId, userId: userId });
+      
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      
+      if (order.status !== 'pending') {
+        return res.status(400).json({ message: "Only pending orders can be cancelled" });
+      }
+      
+      // Update order status to cancelled
+      await Order.findByIdAndUpdate(orderId, {
+        status: 'cancelled',
+        updatedAt: new Date()
+      });
+      
+      // Restore cart items
+      if (order.items && order.items.length > 0) {
+        console.log(`🔄 Restoring cart items for user ${userId} after order cancellation`);
+        
+        // Clear existing cart first
+        await storage.clearCart(userId);
+        
+        // Add items back to cart
+        for (const item of order.items) {
+          await storage.addToCart(userId, item.productId.toString(), item.quantity);
+        }
+        
+        console.log(`✅ Cart restored with ${order.items.length} items after order cancellation`);
+      }
+      
+      res.json({ message: "Order cancelled successfully", orderId });
+    } catch (error) {
+      console.error("Error cancelling order:", error);
+      res.status(500).json({ message: "Failed to cancel order" });
     }
   });
 
@@ -1078,7 +1142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Update order status in database
             try {
-              await Order.findOneAndUpdate(
+              const updatedOrder = await Order.findOneAndUpdate(
                 { orderNumber: order_id },
                 { 
                   status: 'confirmed',
@@ -1086,9 +1150,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   paymentMethod: payment_method,
                   paymentAmount: payment_amount,
                   updatedAt: new Date()
-                }
+                },
+                { new: true }
               );
               console.log(`📝 Order ${order_id} status updated to confirmed`);
+              
+              // Clear cart only after successful payment
+              if (updatedOrder && updatedOrder.userId) {
+                await storage.clearCart(updatedOrder.userId);
+                console.log(`🛒 Cart cleared for user ${updatedOrder.userId} after successful payment`);
+              }
             } catch (dbError) {
               console.error('❌ Database update failed:', dbError);
             }
@@ -1102,16 +1173,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Update order status in database
             try {
-              await Order.findOneAndUpdate(
+              const failedOrder = await Order.findOneAndUpdate(
                 { orderNumber: order_id },
                 { 
                   status: 'failed',
                   paymentStatus: 'failed',
                   failureReason: failure_reason,
                   updatedAt: new Date()
-                }
+                },
+                { new: true }
               );
               console.log(`📝 Order ${order_id} status updated to failed`);
+              
+              // Restore cart items for failed payment
+              if (failedOrder && failedOrder.userId && failedOrder.items) {
+                console.log(`🔄 Restoring cart items for user ${failedOrder.userId} after payment failure`);
+                
+                // Clear existing cart first
+                await storage.clearCart(failedOrder.userId);
+                
+                // Add items back to cart
+                for (const item of failedOrder.items) {
+                  await storage.addToCart(failedOrder.userId, item.productId.toString(), item.quantity);
+                }
+                
+                console.log(`✅ Cart restored with ${failedOrder.items.length} items after payment failure`);
+              }
             } catch (dbError) {
               console.error('❌ Database update failed:', dbError);
             }
@@ -1125,15 +1212,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Update order status in database
             try {
-              await Order.findOneAndUpdate(
+              const cancelledOrder = await Order.findOneAndUpdate(
                 { orderNumber: order_id },
                 { 
                   status: 'cancelled',
                   paymentStatus: 'cancelled',
                   updatedAt: new Date()
-                }
+                },
+                { new: true }
               );
               console.log(`📝 Order ${order_id} status updated to cancelled`);
+              
+              // Restore cart items for cancelled payment
+              if (cancelledOrder && cancelledOrder.userId && cancelledOrder.items) {
+                console.log(`🔄 Restoring cart items for user ${cancelledOrder.userId} after payment cancellation`);
+                
+                // Clear existing cart first
+                await storage.clearCart(cancelledOrder.userId);
+                
+                // Add items back to cart
+                for (const item of cancelledOrder.items) {
+                  await storage.addToCart(cancelledOrder.userId, item.productId.toString(), item.quantity);
+                }
+                
+                console.log(`✅ Cart restored with ${cancelledOrder.items.length} items after payment cancellation`);
+              }
             } catch (dbError) {
               console.error('❌ Database update failed:', dbError);
             }

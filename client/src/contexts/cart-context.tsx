@@ -16,6 +16,8 @@ interface CartItem {
     name: string;
     price: string;
     images: string[];
+    hasDeliveryCharge: boolean;
+    deliveryCharge: number;
   };
 }
 

@@ -564,7 +564,15 @@ export default function Checkout() {
     );
   }
 
-  const shippingFee = totalPrice > 1000 ? 0 : 99;
+  // Calculate delivery charges based on individual products
+  const deliveryFee = items.reduce((total, item) => {
+    if (item.product.hasDeliveryCharge) {
+      return total + item.product.deliveryCharge;
+    }
+    return total;
+  }, 0);
+  
+  const shippingFee = deliveryFee;
   const giftWrapFee = giftWrap ? 50 : 0;
   const expressDeliveryFee = expressDelivery ? 199 : 0;
   const totalWithExtras = totalPrice + shippingFee + giftWrapFee + expressDeliveryFee;

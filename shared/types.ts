@@ -54,6 +54,8 @@ export interface Product {
   isActive: boolean;
   isFeatured: boolean;
   tags?: string[];
+  hasDeliveryCharge: boolean;
+  deliveryCharge: number;
   createdAt: Date;
   updatedAt: Date;
 }

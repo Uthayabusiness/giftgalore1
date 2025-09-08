@@ -144,6 +144,8 @@ export interface IProduct extends Document {
   isActive: boolean;
   isFeatured: boolean;
   tags?: string[];
+  hasDeliveryCharge: boolean;
+  deliveryCharge: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -161,6 +163,8 @@ const productSchema = new Schema<IProduct>({
   isActive: { type: Boolean, default: true },
   isFeatured: { type: Boolean, default: false },
   tags: [String],
+  hasDeliveryCharge: { type: Boolean, default: true },
+  deliveryCharge: { type: Number, default: 99, min: 0 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

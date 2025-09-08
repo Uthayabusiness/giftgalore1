@@ -72,7 +72,15 @@ export default function Cart() {
     }
   };
 
-  const shippingFee = totalPrice > 1000 ? 0 : 99;
+  // Calculate delivery charges based on individual products
+  const deliveryFee = items.reduce((total, item) => {
+    if (item.product.hasDeliveryCharge) {
+      return total + item.product.deliveryCharge;
+    }
+    return total;
+  }, 0);
+  
+  const shippingFee = deliveryFee;
   const finalTotal = totalPrice + shippingFee;
 
   return (
@@ -244,9 +252,14 @@ export default function Cart() {
                     </span>
                   </div>
                   
-                  {totalPrice < 1000 && (
+                  {shippingFee > 0 && (
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                      Add ₹{(1000 - totalPrice).toLocaleString()} more for free shipping!
+                      Delivery charges apply to some items
+                    </div>
+                  )}
+                  {shippingFee === 0 && (
+                    <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                      Free delivery on all items!
                     </div>
                   )}
                   

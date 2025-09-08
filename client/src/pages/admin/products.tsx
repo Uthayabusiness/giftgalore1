@@ -35,6 +35,8 @@ const productSchema = z.object({
   tags: z.array(z.string()).optional(),
   isFeatured: z.boolean(),
   isActive: z.boolean(),
+  hasDeliveryCharge: z.boolean(),
+  deliveryCharge: z.number().min(0, 'Delivery charge must be non-negative'),
 });
 
 type ProductForm = z.infer<typeof productSchema>;
@@ -70,6 +72,8 @@ export default function AdminProducts() {
       minOrderQuantity: 1,
       images: [''],
       tags: [],
+      hasDeliveryCharge: true,
+      deliveryCharge: 99,
     },
   });
 
@@ -332,6 +336,8 @@ export default function AdminProducts() {
       minOrderQuantity: product.minOrderQuantity || 1,
       isFeatured: product.isFeatured,
       isActive: product.isActive,
+      hasDeliveryCharge: product.hasDeliveryCharge ?? true,
+      deliveryCharge: product.deliveryCharge ?? 99,
     });
     setSelectedCategories(categoryIds);
     setImageInputs(product.images || ['']);
@@ -753,6 +759,36 @@ export default function AdminProducts() {
                   />
                   <Label htmlFor="isActive">Active</Label>
                 </div>
+              </div>
+
+              {/* Delivery Charge Configuration */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="hasDeliveryCharge"
+                    checked={watch('hasDeliveryCharge')}
+                    onCheckedChange={(checked) => setValue('hasDeliveryCharge', checked === true)}
+                    data-testid="checkbox-delivery-charge"
+                  />
+                  <Label htmlFor="hasDeliveryCharge">Apply Delivery Charge</Label>
+                </div>
+
+                {watch('hasDeliveryCharge') && (
+                  <div className="space-y-2">
+                    <Label htmlFor="deliveryCharge">Delivery Charge (₹)</Label>
+                    <Input
+                      id="deliveryCharge"
+                      type="number"
+                      min="0"
+                      step="1"
+                      {...register('deliveryCharge', { valueAsNumber: true })}
+                      data-testid="input-delivery-charge"
+                    />
+                    {errors.deliveryCharge && (
+                      <p className="text-sm text-red-500">{errors.deliveryCharge.message}</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <DialogFooter>
