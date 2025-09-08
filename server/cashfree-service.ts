@@ -53,6 +53,14 @@ export class CashfreeService {
   private secretKey: string;
 
   constructor() {
+    // Safety check for environment variables
+    if (!CASHFREE_CONFIG.appId || CASHFREE_CONFIG.appId === 'not-set') {
+      console.warn('⚠️ Cashfree APP_ID not set - payment features will be disabled');
+    }
+    if (!CASHFREE_CONFIG.secretKey || CASHFREE_CONFIG.secretKey === 'not-set') {
+      console.warn('⚠️ Cashfree SECRET_KEY not set - payment features will be disabled');
+    }
+    
     this.baseUrl = CASHFREE_CONFIG.baseUrl;
     this.appId = CASHFREE_CONFIG.appId;
     this.secretKey = CASHFREE_CONFIG.secretKey;
