@@ -40,7 +40,14 @@ export default function CashfreePayment({
     script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
     script.async = true;
     script.onload = () => {
-      initializeCashfree();
+      console.log('📦 Cashfree SDK loaded from CDN');
+      // Initialize after a short delay to ensure everything is ready
+      setTimeout(() => {
+        initializeCashfree();
+      }, 100);
+    };
+    script.onerror = () => {
+      console.error('❌ Failed to load Cashfree SDK');
     };
     document.head.appendChild(script);
 
@@ -50,10 +57,16 @@ export default function CashfreePayment({
         script.parentNode.removeChild(script);
       }
     };
-  }, []);
+  }, [paymentSessionId, orderId]); // Re-run when paymentSessionId or orderId changes
 
   const initializeCashfree = () => {
+    console.log('🔧 Initializing Cashfree...');
+    console.log('📋 Payment Session ID:', paymentSessionId);
+    console.log('🆔 Order ID:', orderId);
+    
     if (window.cashfree) {
+      console.log('✅ Cashfree SDK loaded');
+      
       const cashfree = window.cashfree({
         mode: 'production', // Use 'sandbox' for testing
       });
@@ -61,6 +74,7 @@ export default function CashfreePayment({
       cashfreeRef.current = cashfree;
 
       // Initialize payment session
+      console.log('🚀 Initializing payment session...');
       cashfree.initialize({
         paymentSessionId: paymentSessionId,
         returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderId}`,
@@ -68,25 +82,41 @@ export default function CashfreePayment({
 
       // Handle payment events
       cashfree.on('PAYMENT_SUCCESS', (data: any) => {
-        console.log('Payment successful:', data);
+        console.log('✅ Payment successful:', data);
         onSuccess(data);
       });
 
       cashfree.on('PAYMENT_FAILED', (data: any) => {
-        console.log('Payment failed:', data);
+        console.log('❌ Payment failed:', data);
         onFailure(data);
       });
 
       cashfree.on('PAYMENT_USER_DROPPED', (data: any) => {
-        console.log('Payment user dropped:', data);
+        console.log('👤 Payment user dropped:', data);
         onClose();
       });
+      
+      console.log('✅ Cashfree initialized successfully');
+    } else {
+      console.error('❌ Cashfree SDK not loaded');
     }
   };
 
   const handlePayment = () => {
+    console.log('💳 Payment button clicked');
+    console.log('🔧 Cashfree ref:', cashfreeRef.current);
+    
     if (cashfreeRef.current) {
-      cashfreeRef.current.redirect();
+      console.log('🚀 Redirecting to payment...');
+      try {
+        cashfreeRef.current.redirect();
+      } catch (error) {
+        console.error('❌ Payment redirect error:', error);
+        onFailure(error);
+      }
+    } else {
+      console.error('❌ Cashfree not initialized');
+      onFailure(new Error('Payment system not ready'));
     }
   };
 
