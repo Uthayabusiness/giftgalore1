@@ -845,7 +845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderNumber: order.orderNumber,
         status: 'pending',
         paymentSessionId: cashfreeOrder.payment_session_id,
-        paymentUrl: `https://sandbox.cashfree.com/pg/web/${cashfreeOrder.payment_session_id}`
+        paymentUrl: `https://sandbox.cashfree.com/pg/web/session/${cashfreeOrder.payment_session_id}`
       });
     } catch (error) {
       console.error("Error initiating payment:", error);

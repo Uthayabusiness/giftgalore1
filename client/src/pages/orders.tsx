@@ -112,7 +112,7 @@ export default function Orders() {
         window.location.href = data.paymentUrl;
       } else if (data.paymentSessionId) {
         // Fallback: construct payment URL manually
-        const paymentUrl = `https://sandbox.cashfree.com/pg/web/${data.paymentSessionId}`;
+        const paymentUrl = `https://sandbox.cashfree.com/pg/web/session/${data.paymentSessionId}`;
         console.log('🔗 Redirecting to payment page (fallback):', paymentUrl);
         window.location.href = paymentUrl;
       } else {

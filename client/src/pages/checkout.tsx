@@ -585,7 +585,7 @@ export default function Checkout() {
 
       if (paymentResponse.success && paymentResponse.paymentSessionId) {
         // Redirect to Cashfree payment page
-        const paymentUrl = `https://sandbox.cashfree.com/pg/web/${paymentResponse.paymentSessionId}`;
+        const paymentUrl = `https://sandbox.cashfree.com/pg/web/session/${paymentResponse.paymentSessionId}`;
         console.log('🔗 Redirecting to payment page:', paymentUrl);
         
         // Store payment data for potential return
