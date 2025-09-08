@@ -439,35 +439,6 @@ export default function Checkout() {
       const response = await apiRequest('POST', '/api/orders', orderData);
       return await response.json();
     },
-    onSuccess: async (data: any) => {
-      // Simulate payment processing
-      setIsProcessing(true);
-      
-      // Simulate payment delay
-      setTimeout(() => {
-        // Simulate 90% success rate for demo purposes
-        const isSuccess = Math.random() > 0.1;
-        
-        if (isSuccess) {
-          // Payment successful - redirect to order success page
-          clearCart();
-          toast({
-            title: "Order Placed!",
-            description: "Your order has been placed successfully.",
-          });
-          setLocation(`/order/success?orderId=${data?.id || 'unknown'}&amount=${totalWithExtras}`);
-        } else {
-          // Payment failed - redirect to order failed page
-          toast({
-            title: "Payment Failed",
-            description: "Your transaction could not be completed. Please try again.",
-            variant: "destructive",
-          });
-          setLocation(`/order/failed?error=Payment simulation failed`);
-        }
-        setIsProcessing(false);
-      }, 2000); // 2 second delay to simulate processing
-    },
     onError: (error) => {
       setIsProcessing(false);
       if (isUnauthorizedError(error)) {
@@ -482,23 +453,13 @@ export default function Checkout() {
         return;
       }
       toast({
-        title: "Demo Payment Mode",
-        description: "Order creation failed because payment gateway is not yet integrated. This is only for testing.",
+        title: "Order Creation Failed",
+        description: "Failed to create order. Please try again.",
         variant: "destructive",
       });
-      // Redirect to order failed page
-      setTimeout(() => {
-        setLocation(`/order/failed?error=Demo Mode: Payment gateway not integrated`);
-      }, 2000);
     },
   });
 
-  // Payment simulation functions for demo purposes
-  const simulatePayment = async (amount: number) => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return { success: Math.random() > 0.1 };
-  };
 
   const onSubmit = async (data: CheckoutForm) => {
     // Check if country is India
@@ -514,7 +475,13 @@ export default function Checkout() {
     setIsProcessing(true);
 
     try {
+      console.log('🛒 Starting checkout process...');
+      console.log('👤 User:', user);
+      console.log('🛍️ Cart items:', items);
+      console.log('💰 Total:', totalWithExtras);
+      
       // First create the order
+      console.log('📝 Creating order...');
       const orderResponse = await createOrderMutation.mutateAsync({
         shippingAddress: {
           firstName: data.firstName,
@@ -534,6 +501,8 @@ export default function Checkout() {
           expressDelivery,
         },
       });
+      
+      console.log('✅ Order created successfully:', orderResponse);
 
       if (orderResponse.success && orderResponse.order) {
         // Create payment order with Cashfree
@@ -559,10 +528,16 @@ export default function Checkout() {
         throw new Error('Failed to create order');
       }
     } catch (error) {
-      console.error('Checkout error:', error);
+      console.error('❌ Checkout error:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        response: error.response
+      });
+      
       toast({
         title: "Checkout Failed",
-        description: "There was an error processing your order. Please try again.",
+        description: `There was an error processing your order: ${error.message || 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {
