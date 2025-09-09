@@ -12,9 +12,10 @@ import { toast } from '@/hooks/use-toast';
 export default function PaymentSuccess() {
   const [location] = useLocation();
   const searchParams = new URLSearchParams(location.split('?')[1]);
-  const orderId = searchParams.get('order_id') || searchParams.get('orderId') || 'ORD-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+  const orderId = searchParams.get('order_id') || searchParams.get('orderId');
   const [orderData, setOrderData] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(true);
+  const [hasProcessed, setHasProcessed] = useState(false);
 
   // Debug logging
   console.log('🔍 Payment Success Page Debug:');
@@ -25,7 +26,7 @@ export default function PaymentSuccess() {
 
   // Mutation to handle payment success
   const paymentSuccessMutation = useMutation({
-    mutationFn: async (data: { orderNumber: string; paymentAmount?: number; paymentMethod?: string }) => {
+    mutationFn: async (data: { orderNumber: string; paymentMethod?: string }) => {
       console.log('🚀 Calling payment success endpoint with data:', data);
       
       const response = await fetch('/api/payment/success', {
@@ -43,6 +44,12 @@ export default function PaymentSuccess() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Payment success error response:', errorText);
+        
+        // Handle specific error cases
+        if (response.status === 0 || response.status === 500) {
+          throw new Error('Network error: Unable to connect to server. Please check your internet connection and try again.');
+        }
+        
         throw new Error(`Failed to process payment success: ${response.status} ${errorText}`);
       }
 
@@ -62,28 +69,34 @@ export default function PaymentSuccess() {
     onError: (error) => {
       console.error('❌ Error processing payment success:', error);
       setIsProcessing(false);
+      
+      // Check if it's a network error and suggest retry
+      const isNetworkError = error.message.includes('Network error') || error.message.includes('ERR_INSUFFICIENT_RESOURCES');
+      
       toast({
         title: "Error",
-        description: "Failed to process payment success. Please contact support.",
+        description: isNetworkError 
+          ? "Network error occurred. Please refresh the page to retry."
+          : "Failed to process payment success. Please contact support.",
         variant: "destructive",
       });
     },
   });
 
   useEffect(() => {
-    // Process payment success when component mounts
-    if (orderId && orderId.startsWith('ORD-')) {
+    // Process payment success when component mounts - only once
+    if (orderId && orderId.startsWith('ORD-') && !hasProcessed) {
       console.log('🎉 Processing payment success for order:', orderId);
+      setHasProcessed(true);
       paymentSuccessMutation.mutate({
         orderNumber: orderId,
-        paymentAmount: 0, // This will be updated from the actual payment
         paymentMethod: 'Credit/Debit Card'
       });
-    } else {
+    } else if (!orderId) {
       console.log('⚠️ No valid order ID found, skipping payment processing');
       setIsProcessing(false);
     }
-  }, [orderId]);
+  }, [orderId, hasProcessed]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -147,11 +160,11 @@ export default function PaymentSuccess() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Order ID</p>
-                    <p className="font-semibold">{orderId}</p>
+                    <p className="font-semibold">{orderId || 'Processing...'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Amount Paid</p>
-                    <p className="font-semibold text-green-600">₹0</p>
+                    <p className="font-semibold text-green-600">Processing...</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Payment Method</p>
@@ -159,8 +172,8 @@ export default function PaymentSuccess() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Status</p>
-                    <Badge variant="default" className="bg-green-100 text-green-800">
-                      Confirmed
+                    <Badge variant="default" className="bg-blue-100 text-blue-800">
+                      Processing
                     </Badge>
                   </div>
                 </div>
@@ -246,18 +259,39 @@ export default function PaymentSuccess() {
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <Button asChild className="flex-1">
-              <Link href="/orders">
-                <Receipt className="mr-2 h-4 w-4" />
-                View My Orders
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="flex-1">
-              <Link href="/">
-                <Home className="mr-2 h-4 w-4" />
-                Continue Shopping
-              </Link>
-            </Button>
+            {orderData ? (
+              <>
+                <Button asChild className="flex-1">
+                  <Link href="/orders">
+                    <Receipt className="mr-2 h-4 w-4" />
+                    View My Orders
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="flex-1">
+                  <Link href="/">
+                    <Home className="mr-2 h-4 w-4" />
+                    Continue Shopping
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button 
+                  onClick={() => window.location.reload()} 
+                  className="flex-1"
+                  disabled={isProcessing}
+                >
+                  <Receipt className="mr-2 h-4 w-4" />
+                  {isProcessing ? 'Processing...' : 'Retry Processing'}
+                </Button>
+                <Button asChild variant="outline" className="flex-1">
+                  <Link href="/">
+                    <Home className="mr-2 h-4 w-4" />
+                    Continue Shopping
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Important Note */}
