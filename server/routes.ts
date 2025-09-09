@@ -672,6 +672,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Temporary endpoint to clear all orders (for testing)
+  app.delete('/api/orders/clear-all', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.user;
+      console.log(`🗑️ User ${user._id} requesting to clear all orders`);
+      
+      // Only allow admin users to clear all orders
+      if (user.role !== 'admin') {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Only admin users can clear all orders' 
+        });
+      }
+      
+      // Count existing orders
+      const orderCount = await Order.countDocuments();
+      console.log(`📊 Found ${orderCount} orders in database`);
+      
+      if (orderCount === 0) {
+        return res.json({ 
+          success: true, 
+          message: 'No orders to delete',
+          deletedCount: 0
+        });
+      }
+      
+      // Delete all orders
+      const result = await Order.deleteMany({});
+      console.log(`✅ Successfully deleted ${result.deletedCount} orders`);
+      
+      res.json({
+        success: true,
+        message: `Successfully deleted ${result.deletedCount} orders`,
+        deletedCount: result.deletedCount
+      });
+      
+    } catch (error) {
+      console.error('❌ Error clearing orders:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to clear orders' 
+      });
+    }
+  });
+
   // Handle payment success - create order and clear cart
   app.post('/api/payment/success', isAuthenticated, async (req: any, res) => {
     try {
@@ -1855,8 +1900,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       switch (webhookData.type) {
         case 'PAYMENT_SUCCESS_WEBHOOK':
           {
-            const { order_id, payment_status, payment_amount, payment_method } = webhookData.data;
+            // Extract data directly from webhook payload (no API calls needed)
+            const { order: orderData, payment: paymentData, customer_details: customerData } = webhookData.data;
+            const order_id = orderData.order_id;
+            const payment_amount = paymentData.payment_amount;
+            const payment_method = paymentData.payment_method?.type || 'Credit/Debit Card';
+            const customer_email = customerData.customer_email;
+            const customer_id = customerData.customer_id;
+            
             console.log(`✅ Payment Success - Order: ${order_id}, Amount: ₹${payment_amount}, Method: ${payment_method}`);
+            console.log(`👤 Customer: ${customer_email} (ID: ${customer_id})`);
             
             // Check if order already exists (for backward compatibility)
             let existingOrder = await Order.findOne({ orderNumber: order_id });
@@ -1886,67 +1939,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.error('❌ Database update failed:', dbError);
               }
             } else {
-              // Create new order only after successful payment
+              // Create new order using webhook data directly (no API calls)
               try {
-                // Get payment session data to retrieve order details
-                const paymentSessionData = await cashfreeService.getOrder(order_id);
+                // Find user by customer_id from webhook
+                const user = await storage.getUser(customer_id);
                 
-                if (paymentSessionData && paymentSessionData.customer_details) {
-                  // Find user by email or phone
-                  const user = await storage.getUserByEmail(paymentSessionData.customer_details.customer_email) ||
-                               await storage.getUserByPhone(paymentSessionData.customer_details.customer_phone);
+                if (user) {
+                  console.log(`👤 Found user: ${user.email} (${user._id})`);
                   
-                  if (user) {
-                    // Get cart items to create order
-                    const cartItems = await storage.getCartItems(user._id.toString());
-                    
-                    if (cartItems.length > 0) {
-                      // Calculate total including delivery charges
-                      const total = cartItems.reduce((sum, item) => {
-                        const price = parseFloat(item.product.price.toString());
-                        const itemTotal = price * item.quantity;
-                        
-                        // Add delivery charge if product has it
-                        const deliveryCharge = item.product.hasDeliveryCharge ? 
-                          parseFloat(item.product.deliveryCharge.toString()) : 0;
-                        
-                        return sum + itemTotal + deliveryCharge;
-                      }, 0);
-
-                      // Prepare order items data
-                      const orderItems = cartItems.map(item => ({
-                        productId: new mongoose.Types.ObjectId(item.productId.toString()),
-                        productName: item.product.name,
-                        productImage: item.product.images?.[0] || '/placeholder-image.jpg',
-                        price: parseFloat(item.product.price.toString()),
-                        quantity: item.quantity
-                      }));
-
-                      // Create order with confirmed status
-                      const orderData = {
-                        userId: new mongoose.Types.ObjectId(user._id.toString()),
-                        orderNumber: order_id,
-                        total: total,
-                        items: orderItems,
-                        shippingAddress: (paymentSessionData.order_meta as any)?.shipping_address || {},
-                        status: 'confirmed' as const,
-                        paymentStatus: 'completed',
-                        paymentMethod: payment_method,
-                        paymentAmount: payment_amount,
-                      };
-
-                      const newOrder = await storage.createOrder(orderData);
-                      console.log(`✅ New order created after successful payment: ${order_id}`);
+                  // Get cart items to create order
+                  const cartItems = await storage.getCartItems(user._id.toString());
+                  console.log(`🛒 Cart items found: ${cartItems.length} items for user ${user._id}`);
+                  
+                  if (cartItems.length > 0) {
+                    // Calculate total including delivery charges
+                    const total = cartItems.reduce((sum, item) => {
+                      const price = parseFloat(item.product.price.toString());
+                      const itemTotal = price * item.quantity;
                       
-                      // Clear cart after successful order creation
-                      await storage.clearCart(user._id.toString());
-                      console.log(`🛒 Cart cleared for user ${user._id} after successful payment`);
-                    } else {
-                      console.log(`⚠️ No cart items found for user ${user._id} during payment success`);
-                    }
+                      // Add delivery charge if product has it
+                      const deliveryCharge = (item.product.hasDeliveryCharge && item.product.deliveryCharge) ? 
+                        parseFloat(item.product.deliveryCharge.toString()) : 0;
+                      
+                      return sum + itemTotal + deliveryCharge;
+                    }, 0);
+
+                    // Prepare order items data
+                    const orderItems = cartItems.map(item => ({
+                      productId: new mongoose.Types.ObjectId(item.productId.toString()),
+                      productName: item.product.name,
+                      productImage: item.product.images?.[0] || '/placeholder-image.jpg',
+                      price: parseFloat(item.product.price.toString()),
+                      quantity: item.quantity
+                    }));
+
+                    // Create order with confirmed status using webhook data
+                    const orderData = {
+                      userId: new mongoose.Types.ObjectId(user._id.toString()),
+                      orderNumber: order_id,
+                      total: total,
+                      items: orderItems,
+                      shippingAddress: {}, // Will be updated from frontend if needed
+                      status: 'confirmed' as const,
+                      paymentStatus: 'completed',
+                      paymentMethod: payment_method,
+                      paymentAmount: payment_amount,
+                    };
+
+                    const newOrder = await storage.createOrder(orderData);
+                    console.log(`✅ New order created after successful payment: ${order_id}`);
+                    
+                    // Clear cart after successful order creation
+                    await storage.clearCart(user._id.toString());
+                    console.log(`🛒 Cart cleared for user ${user._id} after successful payment`);
                   } else {
-                    console.log(`⚠️ User not found for payment success: ${paymentSessionData.customer_details.customer_email}`);
+                    console.log(`⚠️ No cart items found for user ${user._id} during payment success`);
                   }
+                } else {
+                  console.log(`⚠️ User not found for payment success: ${customer_id}`);
                 }
               } catch (createError) {
                 console.error('❌ Failed to create order after payment success:', createError);

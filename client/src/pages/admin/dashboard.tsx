@@ -36,11 +36,61 @@ import {
   CheckCircle,
   XCircle,
   Truck,
+  Trash2,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useMutation } from '@tanstack/react-query';
 
 export default function AdminDashboard() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+
+  // Mutation to clear all orders
+  const clearAllOrdersMutation = useMutation({
+    mutationFn: async () => {
+      console.log('🚀 Attempting to clear all orders...');
+      console.log('👤 Current user:', user);
+      console.log('👤 User role:', user?.role);
+      console.log('🔐 Is authenticated:', isAuthenticated);
+      
+      const response = await fetch('/api/orders/clear-all', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response ok:', response.ok);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Error response:', errorText);
+        throw new Error(`Failed to clear orders: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Success response:', result);
+      return result;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Orders Cleared",
+        description: `Successfully deleted ${data.deletedCount} orders`,
+      });
+      // Refetch stats to update the dashboard
+      window.location.reload();
+    },
+    onError: (error) => {
+      console.error('❌ Clear orders error:', error);
+      toast({
+        title: "Error",
+        description: `Failed to clear orders: ${error.message}`,
+        variant: "destructive",
+      });
+    },
+  });
 
   // Check admin access
   useEffect(() => {
@@ -250,9 +300,9 @@ export default function AdminDashboard() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                 <p className="text-sm text-muted-foreground mt-2">Loading updates...</p>
               </div>
-            ) : recentUpdates.length > 0 ? (
+            ) : (recentUpdates as any[])?.length > 0 ? (
               <div className="space-y-3">
-                {recentUpdates.slice(0, 5).map((update: any, index: number) => (
+                {(recentUpdates as any[]).slice(0, 5).map((update: any, index: number) => (
                   <div key={index} className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                     <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
                       update.status === 'delivered' ? 'bg-green-100 text-green-600' :
@@ -445,7 +495,7 @@ export default function AdminDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="p-4 border rounded-lg text-center">
                 <Package className="h-8 w-8 mx-auto mb-2 text-primary" />
                 <h3 className="font-semibold mb-1">Manage Products</h3>
@@ -477,6 +527,23 @@ export default function AdminDashboard() {
                 <h3 className="font-semibold mb-1">View Analytics</h3>
                 <p className="text-sm text-muted-foreground mb-3">Detailed sales reports</p>
                 <span className="text-muted-foreground text-sm">Coming Soon</span>
+              </div>
+
+              <div className="p-4 border rounded-lg text-center">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm('Are you sure you want to delete ALL orders? This action cannot be undone.')) {
+                      clearAllOrdersMutation.mutate();
+                    }
+                  }}
+                  disabled={clearAllOrdersMutation.isPending}
+                  className="w-full"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {clearAllOrdersMutation.isPending ? 'Deleting...' : 'Clear All Orders'}
+                </Button>
               </div>
             </div>
           </CardContent>
