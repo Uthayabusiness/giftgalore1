@@ -289,9 +289,9 @@ export default function Orders() {
     }
   }, [orders, toast]);
 
-  // Get orders that need attention (pending, confirmed, processing) - exclude draft orders
+  // Get orders that need attention (only confirmed, processing) - exclude pending and draft orders
   const pendingOrders = orders.filter((order: any) => 
-    ['pending', 'confirmed', 'processing'].includes(order.status)
+    ['confirmed', 'processing'].includes(order.status)
   );
 
   // Handle unauthorized errors at page level
@@ -489,7 +489,13 @@ export default function Orders() {
         item.productName?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    // Map 'pending' filter to show confirmed and processing orders
+    let statusToMatch = statusFilter;
+    if (statusFilter === 'pending') {
+      statusToMatch = 'confirmed'; // Show confirmed orders when "pending" filter is selected
+    }
+    
+    const matchesStatus = statusFilter === 'all' || order.status === statusToMatch;
     
     return matchesSearch && matchesStatus;
   }).sort((a: any, b: any) => {
@@ -725,148 +731,7 @@ export default function Orders() {
             </div>
           </div>
           
-          {/* Pending Orders Alert Section */}
-          {pendingOrders.length > 0 && (
-            <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-200 rounded-xl p-6 mb-6 shadow-lg">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-orange-500 rounded-full shadow-lg">
-                  <AlertCircle className="h-8 w-8 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-bold text-orange-900 mb-2">
-                    ⚠️ Orders Require Attention
-                  </h3>
-                  <p className="text-orange-800 mb-4">
-                    You have <strong>{pendingOrders.length} order(s)</strong> that need to be completed or cancelled before you can place new orders.
-                  </p>
-                  
-                  <div className="space-y-3">
-                    {pendingOrders.map((order: any) => (
-                      <div key={order._id} className="bg-white rounded-lg p-4 border border-orange-200 shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="p-2 bg-orange-100 rounded-lg">
-                              <Clock className="h-5 w-5 text-orange-600" />
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-gray-900">Order #{order.orderNumber}</h4>
-                              <p className="text-sm text-gray-600">
-                                Placed on {new Date(order.createdAt).toLocaleDateString('en-IN')} • 
-                                Total: ₹{parseFloat(order.total).toLocaleString()}
-                              </p>
-                              {order.status === 'pending' && timeRemaining > 0 && (
-                                <div className="mt-2 flex items-center gap-2">
-                                  <Clock className="h-4 w-4 text-orange-600" />
-                                  <span className="text-sm font-medium text-orange-600">
-                                    Time remaining: {formatTimeRemaining(timeRemaining)}
-                                  </span>
-                                </div>
-                              )}
-                              {order.status === 'pending' && isExpired && (
-                                <div className="mt-2 flex items-center gap-2">
-                                  <AlertCircle className="h-4 w-4 text-red-600" />
-                                  <span className="text-sm font-medium text-red-600">
-                                    Payment session expired
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              onClick={() => {
-                                setSelectedOrder(order);
-                                setIsDetailsDialogOpen(true);
-                              }}
-                              variant="outline"
-                              size="sm"
-                              className="border-blue-600 text-blue-600 hover:bg-blue-50"
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </Button>
-                            {order.status === 'pending' && (
-                              <Button
-                                onClick={() => {
-                                  if (confirm(`Initiate payment for order #${order.orderNumber}? This will redirect you to the payment gateway.`)) {
-                                    initiatePaymentMutation.mutate(order._id);
-                                  }
-                                }}
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700 text-white"
-                                disabled={initiatePaymentMutation.isPending || isExpired}
-                              >
-                                <CreditCard className="h-4 w-4 mr-2" />
-                                {initiatePaymentMutation.isPending ? 'Initiating...' : isExpired ? 'Expired' : 'Complete Payment'}
-                              </Button>
-                            )}
-                            <Button
-                              onClick={() => {
-                                console.log('🔄 Order data for cancellation:', {
-                                  _id: order._id,
-                                  orderNumber: order.orderNumber,
-                                  status: order.status
-                                });
-                                if (confirm(`Are you sure you want to cancel order #${order.orderNumber}? This will restore the items to your cart.`)) {
-                                  cancelOrderMutation.mutate(order._id);
-                                }
-                              }}
-                              variant="outline"
-                              size="sm"
-                              className="border-red-600 text-red-600 hover:bg-red-50"
-                              disabled={cancelOrderMutation.isPending}
-                            >
-                              <XCircle className="h-4 w-4 mr-2" />
-                              {cancelOrderMutation.isPending ? 'Cancelling...' : 'Cancel Order'}
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        {/* Clear instructions */}
-                        <div className="mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                          <div className="flex items-start gap-2">
-                            <Info className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                            <div className="text-sm text-orange-800">
-                              <p className="font-medium mb-1">What you need to do:</p>
-                              <ul className="list-disc list-inside space-y-1 text-xs">
-                                <li><strong>Complete Payment:</strong> If you want to keep this order, complete the payment process</li>
-                                <li><strong>Cancel Order:</strong> If you no longer want this order, cancel it to restore items to your cart</li>
-                                <li><strong>New Orders:</strong> You cannot place new orders until this pending order is resolved</li>
-                              </ul>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="mt-4 p-4 bg-white rounded-lg border border-orange-200">
-                    <div className="flex items-center gap-2 text-orange-800">
-                      <Shield className="h-5 w-5" />
-                      <span className="font-medium">Need Help?</span>
-                    </div>
-                    <p className="text-sm text-orange-700 mt-1">
-                      If you're having trouble with payment or need assistance, please contact our support team.
-                    </p>
-                    <div className="flex gap-2 mt-3">
-                      <Button asChild variant="outline" size="sm" className="border-orange-600 text-orange-600 hover:bg-orange-50">
-                        <Link href="/contact">
-                          <Phone className="h-4 w-4 mr-2" />
-                          Contact Support
-                        </Link>
-                      </Button>
-                      <Button asChild variant="outline" size="sm" className="border-blue-600 text-blue-600 hover:bg-blue-50">
-                        <Link href="/checkout">
-                          <CreditCard className="h-4 w-4 mr-2" />
-                          Go to Checkout
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Orders are only shown after successful payment - no pending orders to display */}
           
           {/* Enhanced Search and Filters */}
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
@@ -905,7 +770,7 @@ export default function Orders() {
                     className="px-4 py-2 h-10"
                   >
                     <Clock className="h-4 w-4 mr-2" />
-                    In Progress ({orders.filter((order: any) => ['pending', 'confirmed', 'processing'].includes(order.status)).length})
+                    In Progress ({orders.filter((order: any) => ['confirmed', 'processing'].includes(order.status)).length})
                   </Button>
                   <Button 
                     variant={statusFilter === 'delivered' ? 'default' : 'outline'}
@@ -994,7 +859,7 @@ export default function Orders() {
               <div>
                 <p className="text-orange-100 text-sm font-medium">In Progress</p>
                 <p className="text-3xl font-bold">
-                  {orders.filter((order: any) => ['pending', 'confirmed', 'processing'].includes(order.status)).length}
+                  {orders.filter((order: any) => ['confirmed', 'processing'].includes(order.status)).length}
                 </p>
               </div>
               <div className="p-3 bg-orange-400/20 rounded-full">

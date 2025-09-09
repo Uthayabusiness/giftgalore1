@@ -881,8 +881,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customer_details: customerDetails,
         order_meta: {
           return_url: process.env.NODE_ENV === 'production' 
-            ? `https://${req.get('host')}/orders`
-            : `https://giftgalore-jfnb.onrender.com/orders`,
+            ? `https://${req.get('host')}/payment/success`
+            : `https://giftgalore-jfnb.onrender.com/payment/success`,
           notify_url: process.env.NODE_ENV === 'production'
             ? `https://${req.get('host')}/api/payments/webhook`
             : `https://giftgalore-jfnb.onrender.com/api/payments/webhook`,
