@@ -5,12 +5,68 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Navigation from '@/components/navigation';
 import Footer from '@/components/footer';
+import { useEffect, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { toast } from '@/hooks/use-toast';
 
 export default function PaymentSuccess() {
   const [location] = useLocation();
   const searchParams = new URLSearchParams(location.split('?')[1]);
-  const orderId = searchParams.get('orderId') || 'ORD-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-  const amount = searchParams.get('amount') || '₹0';
+  const orderId = searchParams.get('order_id') || searchParams.get('orderId') || 'ORD-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+  const [orderData, setOrderData] = useState<any>(null);
+  const [isProcessing, setIsProcessing] = useState(true);
+
+  // Mutation to handle payment success
+  const paymentSuccessMutation = useMutation({
+    mutationFn: async (data: { orderNumber: string; paymentAmount?: number; paymentMethod?: string }) => {
+      const response = await fetch('/api/payment/success', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process payment success');
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      console.log('✅ Payment success processed:', data);
+      setOrderData(data.order);
+      setIsProcessing(false);
+      toast({
+        title: "Order Confirmed!",
+        description: "Your order has been successfully created and cart has been cleared.",
+      });
+    },
+    onError: (error) => {
+      console.error('❌ Error processing payment success:', error);
+      setIsProcessing(false);
+      toast({
+        title: "Error",
+        description: "Failed to process payment success. Please contact support.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  useEffect(() => {
+    // Process payment success when component mounts
+    if (orderId && orderId !== 'ORD-' + Math.random().toString(36).substr(2, 9).toUpperCase()) {
+      console.log('🎉 Processing payment success for order:', orderId);
+      paymentSuccessMutation.mutate({
+        orderNumber: orderId,
+        paymentAmount: 0, // This will be updated from the actual payment
+        paymentMethod: 'Credit/Debit Card'
+      });
+    } else {
+      setIsProcessing(false);
+    }
+  }, [orderId]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -40,26 +96,58 @@ export default function PaymentSuccess() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Order ID</p>
-                  <p className="font-semibold">{orderId}</p>
+              {isProcessing ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">Processing your order...</p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Amount Paid</p>
-                  <p className="font-semibold text-green-600">{amount}</p>
+              ) : orderData ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Order ID</p>
+                    <p className="font-semibold">{orderData.orderNumber}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Amount Paid</p>
+                    <p className="font-semibold text-green-600">₹{orderData.total}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Payment Method</p>
+                    <p className="font-semibold">{orderData.paymentMethod || 'Credit/Debit Card'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <Badge variant="default" className="bg-green-100 text-green-800">
+                      {orderData.status || 'Confirmed'}
+                    </Badge>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-sm text-muted-foreground">Items Ordered</p>
+                    <p className="font-semibold">{orderData.items?.length || 0} item(s)</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Payment Method</p>
-                  <p className="font-semibold">Credit/Debit Card</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Order ID</p>
+                    <p className="font-semibold">{orderId}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Amount Paid</p>
+                    <p className="font-semibold text-green-600">₹0</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Payment Method</p>
+                    <p className="font-semibold">Credit/Debit Card</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <Badge variant="default" className="bg-green-100 text-green-800">
+                      Confirmed
+                    </Badge>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  <Badge variant="default" className="bg-green-100 text-green-800">
-                    Confirmed
-                  </Badge>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 

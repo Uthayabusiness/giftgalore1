@@ -672,6 +672,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Handle payment success - create order and clear cart
+  app.post('/api/payment/success', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user._id;
+      const { orderNumber, paymentAmount, paymentMethod } = req.body;
+      
+      console.log(`🎉 Payment success received for order: ${orderNumber}, user: ${userId}`);
+      
+      // Check if order already exists
+      let existingOrder = await storage.getOrderByOrderNumber(orderNumber);
+      
+      if (existingOrder) {
+        console.log(`📝 Order ${orderNumber} already exists, updating status...`);
+        
+        // Update existing order status
+        const updatedOrder = await storage.updateOrderStatus(
+          existingOrder._id.toString(),
+          'confirmed',
+          userId,
+          'System',
+          'Payment completed successfully'
+        );
+        
+        // Clear cart
+        await storage.clearCart(userId);
+        console.log(`🛒 Cart cleared for user ${userId}`);
+        
+        return res.json({
+          success: true,
+          order: updatedOrder,
+          message: 'Order status updated successfully'
+        });
+      }
+      
+      // Create new order from cart items
+      const cartItems = await storage.getCartItems(userId);
+      
+      if (cartItems.length === 0) {
+        console.log(`⚠️ No cart items found for user ${userId}`);
+        return res.status(400).json({ 
+          success: false, 
+          message: 'No items in cart to create order' 
+        });
+      }
+      
+      // Calculate total including delivery charges
+      const total = cartItems.reduce((sum, item) => {
+        const price = parseFloat(item.product.price.toString());
+        const itemTotal = price * item.quantity;
+        
+        // Add delivery charge if product has it
+        const deliveryCharge = (item.product.hasDeliveryCharge && item.product.deliveryCharge) ? 
+          parseFloat(item.product.deliveryCharge.toString()) : 0;
+        
+        return sum + itemTotal + deliveryCharge;
+      }, 0);
+
+      // Prepare order items data
+      const orderItems = cartItems.map(item => ({
+        productId: new mongoose.Types.ObjectId(item.productId.toString()),
+        productName: item.product.name,
+        productImage: item.product.images?.[0] || '/placeholder-image.jpg',
+        price: parseFloat(item.product.price.toString()),
+        quantity: item.quantity
+      }));
+
+      // Create order
+      const orderData = {
+        userId: new mongoose.Types.ObjectId(userId),
+        orderNumber: orderNumber,
+        total: total,
+        items: orderItems,
+        shippingAddress: req.body.shippingAddress || {},
+        status: 'confirmed' as const,
+        paymentStatus: 'completed',
+        paymentMethod: paymentMethod || 'Credit/Debit Card',
+        paymentAmount: paymentAmount || total,
+      };
+
+      const newOrder = await storage.createOrder(orderData);
+      console.log(`✅ New order created: ${orderNumber}`);
+      
+      // Clear cart after successful order creation
+      await storage.clearCart(userId);
+      console.log(`🛒 Cart cleared for user ${userId}`);
+      
+      res.json({
+        success: true,
+        order: newOrder,
+        message: 'Order created successfully'
+      });
+      
+    } catch (error) {
+      console.error('❌ Error handling payment success:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to process payment success' 
+      });
+    }
+  });
+
   // New endpoint: Initiate payment directly from cart (creates order only after payment success)
   app.post('/api/payments/initiate-from-cart', isAuthenticated, async (req: any, res) => {
     try {
