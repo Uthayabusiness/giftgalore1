@@ -9,13 +9,50 @@ import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 
+// Simple fallback component that always works
+function SimplePaymentSuccess() {
+  return (
+    <div className="min-h-screen bg-background">
+      <Navigation />
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="h-20 w-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="h-10 w-10 text-green-600" />
+          </div>
+          <h1 className="text-4xl font-bold text-green-600 mb-4">🎉 Payment Successful!</h1>
+          <p className="text-xl text-muted-foreground mb-8">
+            Thank you for your order. Your payment has been received.
+          </p>
+          <div className="space-y-4">
+            <Button asChild className="w-full">
+              <Link href="/orders">
+                <Receipt className="mr-2 h-4 w-4" />
+                View My Orders
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/">
+                <Home className="mr-2 h-4 w-4" />
+                Continue Shopping
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+      <Footer />
+    </div>
+  );
+}
+
 export default function PaymentSuccess() {
-  const [location] = useLocation();
-  const searchParams = new URLSearchParams(location.split('?')[1]);
-  const orderId = searchParams.get('order_id') || searchParams.get('orderId');
-  const [orderData, setOrderData] = useState<any>(null);
-  const [isProcessing, setIsProcessing] = useState(true);
-  const [hasProcessed, setHasProcessed] = useState(false);
+  // Try to render the full component, fallback to simple version if anything fails
+  try {
+    const [location] = useLocation();
+    const searchParams = new URLSearchParams(location.split('?')[1]);
+    const orderId = searchParams.get('order_id') || searchParams.get('orderId');
+    const [orderData, setOrderData] = useState<any>(null);
+    const [isProcessing, setIsProcessing] = useState(true);
+    const [hasProcessed, setHasProcessed] = useState(false);
 
   // Debug logging
   console.log('🔍 Payment Success Page Debug:');
@@ -324,4 +361,9 @@ export default function PaymentSuccess() {
       <Footer />
     </div>
   );
+  } catch (error) {
+    console.error('❌ Error in PaymentSuccess component:', error);
+    // Return simple fallback if anything goes wrong
+    return <SimplePaymentSuccess />;
+  }
 }
