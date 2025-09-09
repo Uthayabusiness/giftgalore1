@@ -1943,59 +1943,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
               try {
                 // Find user by customer_id from webhook
                 const user = await storage.getUser(customer_id);
-                
-                if (user) {
+                  
+                  if (user) {
                   console.log(`👤 Found user: ${user.email} (${user._id})`);
                   
-                  // Get cart items to create order
-                  const cartItems = await storage.getCartItems(user._id.toString());
+                    // Get cart items to create order
+                    const cartItems = await storage.getCartItems(user._id.toString());
                   console.log(`🛒 Cart items found: ${cartItems.length} items for user ${user._id}`);
-                  
-                  if (cartItems.length > 0) {
-                    // Calculate total including delivery charges
-                    const total = cartItems.reduce((sum, item) => {
-                      const price = parseFloat(item.product.price.toString());
-                      const itemTotal = price * item.quantity;
-                      
-                      // Add delivery charge if product has it
+                    
+                    if (cartItems.length > 0) {
+                      // Calculate total including delivery charges
+                      const total = cartItems.reduce((sum, item) => {
+                        const price = parseFloat(item.product.price.toString());
+                        const itemTotal = price * item.quantity;
+                        
+                        // Add delivery charge if product has it
                       const deliveryCharge = (item.product.hasDeliveryCharge && item.product.deliveryCharge) ? 
-                        parseFloat(item.product.deliveryCharge.toString()) : 0;
-                      
-                      return sum + itemTotal + deliveryCharge;
-                    }, 0);
+                          parseFloat(item.product.deliveryCharge.toString()) : 0;
+                        
+                        return sum + itemTotal + deliveryCharge;
+                      }, 0);
 
-                    // Prepare order items data
-                    const orderItems = cartItems.map(item => ({
-                      productId: new mongoose.Types.ObjectId(item.productId.toString()),
-                      productName: item.product.name,
-                      productImage: item.product.images?.[0] || '/placeholder-image.jpg',
-                      price: parseFloat(item.product.price.toString()),
-                      quantity: item.quantity
-                    }));
+                      // Prepare order items data
+                      const orderItems = cartItems.map(item => ({
+                        productId: new mongoose.Types.ObjectId(item.productId.toString()),
+                        productName: item.product.name,
+                        productImage: item.product.images?.[0] || '/placeholder-image.jpg',
+                        price: parseFloat(item.product.price.toString()),
+                        quantity: item.quantity
+                      }));
 
                     // Create order with confirmed status using webhook data
-                    const orderData = {
-                      userId: new mongoose.Types.ObjectId(user._id.toString()),
-                      orderNumber: order_id,
-                      total: total,
-                      items: orderItems,
+                      const orderData = {
+                        userId: new mongoose.Types.ObjectId(user._id.toString()),
+                        orderNumber: order_id,
+                        total: total,
+                        items: orderItems,
                       shippingAddress: {}, // Will be updated from frontend if needed
                       status: 'order_placed' as const,
-                      paymentStatus: 'completed',
-                      paymentMethod: payment_method,
-                      paymentAmount: payment_amount,
-                    };
+                        paymentStatus: 'completed',
+                        paymentMethod: payment_method,
+                        paymentAmount: payment_amount,
+                      };
 
-                    const newOrder = await storage.createOrder(orderData);
-                    console.log(`✅ New order created after successful payment: ${order_id}`);
-                    
-                    // Clear cart after successful order creation
-                    await storage.clearCart(user._id.toString());
-                    console.log(`🛒 Cart cleared for user ${user._id} after successful payment`);
+                      const newOrder = await storage.createOrder(orderData);
+                      console.log(`✅ New order created after successful payment: ${order_id}`);
+                      
+                      // Clear cart after successful order creation
+                      await storage.clearCart(user._id.toString());
+                      console.log(`🛒 Cart cleared for user ${user._id} after successful payment`);
+                    } else {
+                      console.log(`⚠️ No cart items found for user ${user._id} during payment success`);
+                    }
                   } else {
-                    console.log(`⚠️ No cart items found for user ${user._id} during payment success`);
-                  }
-                } else {
                   console.log(`⚠️ User not found for payment success: ${customer_id}`);
                 }
               } catch (createError) {

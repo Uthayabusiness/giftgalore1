@@ -238,9 +238,9 @@ export default function Orders() {
   // Check for orders requiring attention and show notification
   // No more toast notifications for pending orders - orders only appear after successful payment
 
-  // Get orders that need attention (only order_placed, processing) - exclude pending and draft orders
+  // Get orders that need attention (only confirmed) - exclude pending and draft orders
   const pendingOrders = orders.filter((order: any) => 
-    ['order_placed', 'processing'].includes(order.status)
+    ['confirmed'].includes(order.status)
   );
 
   // Handle unauthorized errors at page level
@@ -358,8 +358,8 @@ export default function Orders() {
       {
         title: 'Order Placed',
         description: 'Your order has been successfully placed',
-        completed: true,
-        date: 'Order Date'
+        completed: ['order_placed', 'confirmed', 'processing', 'shipped', 'delivered'].includes(status),
+        date: status === 'order_placed' ? 'Just now' : 'Order Date'
       },
       {
         title: 'Order Confirmed',
@@ -403,7 +403,7 @@ export default function Orders() {
 
   const getProgressPercentage = (status: string) => {
     switch (status) {
-      case 'pending':
+      case 'order_placed':
         return 20;
       case 'confirmed':
         return 40;
@@ -438,10 +438,10 @@ export default function Orders() {
         item.productName?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     
-    // Map 'pending' filter to show order_placed and processing orders
+    // Map 'pending' filter to show only confirmed orders
     let statusToMatch = statusFilter;
     if (statusFilter === 'pending') {
-      statusToMatch = 'order_placed'; // Show order_placed orders when "pending" filter is selected
+      statusToMatch = 'confirmed'; // Show only confirmed orders when "pending" filter is selected
     }
     
     const matchesStatus = statusFilter === 'all' || order.status === statusToMatch;
@@ -718,8 +718,8 @@ export default function Orders() {
                     onClick={() => setStatusFilter('pending')}
                     className="px-4 py-2 h-10"
                   >
-                    <Clock className="h-4 w-4 mr-2" />
-                    In Progress ({orders.filter((order: any) => ['order_placed', 'processing'].includes(order.status)).length})
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Confirmed ({orders.filter((order: any) => ['confirmed'].includes(order.status)).length})
                   </Button>
                   <Button 
                     variant={statusFilter === 'delivered' ? 'default' : 'outline'}
@@ -803,21 +803,21 @@ export default function Orders() {
           </div>
 
           {/* In Progress Orders */}
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white shadow-lg">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-100 text-sm font-medium">In Progress</p>
+                <p className="text-blue-100 text-sm font-medium">Confirmed</p>
                 <p className="text-3xl font-bold">
-                  {orders.filter((order: any) => ['order_placed', 'processing'].includes(order.status)).length}
+                  {orders.filter((order: any) => ['confirmed'].includes(order.status)).length}
                 </p>
               </div>
-              <div className="p-3 bg-orange-400/20 rounded-full">
-                <Clock className="h-8 w-8" />
+              <div className="p-3 bg-blue-400/20 rounded-full">
+                <CheckCircle className="h-8 w-8" />
               </div>
             </div>
-            <div className="mt-4 flex items-center text-orange-100 text-sm">
-              <Clock className="h-4 w-4 mr-1" />
-              <span>Being processed</span>
+            <div className="mt-4 flex items-center text-blue-100 text-sm">
+              <CheckCircle className="h-4 w-4 mr-1" />
+              <span>Payment confirmed</span>
             </div>
           </div>
 
