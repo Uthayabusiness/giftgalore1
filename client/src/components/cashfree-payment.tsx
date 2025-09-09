@@ -171,7 +171,7 @@ export default function CashfreePayment({
         console.log('🚀 Using cashfree.checkout() method (correct for paymentSessionId)...');
         const checkoutParams = {
           paymentSessionId: paymentSessionId,
-          returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${orderId}`,
+          returnUrl: `https://giftgalore-jfnb.onrender.com/payment/success?order_id=${orderId}`,
           redirectTarget: "_blank"
         };
         

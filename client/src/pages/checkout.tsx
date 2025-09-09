@@ -525,7 +525,7 @@ export default function Checkout() {
           customerEmail: pendingOrderData.formData.email,
           customerPhone: pendingOrderData.formData.phone,
         },
-        returnUrl: `https://giftgalore-jfnb.onrender.com/payment-success?order_id=${pendingOrderData.order.orderNumber}`,
+        returnUrl: `https://giftgalore-jfnb.onrender.com/payment/success?order_id=${pendingOrderData.order.orderNumber}`,
       });
 
       if (paymentOrder.success) {
@@ -660,14 +660,13 @@ export default function Checkout() {
                 });
               }
               if (result.redirect) {
-                console.log('✅ Payment initiated successfully, redirecting...');
+                console.log('✅ Payment gateway redirecting to payment page...');
                 toast({
-                  title: "Payment Successful",
-                  description: "Your payment has been processed successfully!",
+                  title: "Redirecting to Payment",
+                  description: "Please complete your payment on the next page...",
                 });
-                // Clear cart and redirect to success page
-                clearCart();
-                window.location.href = `/payment-success?order_id=${paymentResponse.orderNumber}`;
+                // Don't redirect immediately - let Cashfree handle the payment flow
+                // The user will be redirected to the payment page, then back to returnUrl after payment
               }
             })
             .catch((error) => {
@@ -706,7 +705,7 @@ export default function Checkout() {
                 console.log('🔄 Payment window closed, checking payment status...');
                 // Redirect to success page (in real implementation, you'd check payment status)
                 setTimeout(() => {
-                  window.location.href = `/payment-success?order_id=${paymentResponse.orderNumber}`;
+                  window.location.href = `/payment/success?order_id=${paymentResponse.orderNumber}`;
                 }, 1000);
               }
             }, 1000);
@@ -1590,7 +1589,7 @@ export default function Checkout() {
                   title: "Payment Successful!",
                   description: "Your order has been placed successfully.",
                 });
-                setLocation('/payment-success');
+                setLocation('/payment/success');
               }}
               onFailure={(error) => {
                 console.error('Payment failed:', error);
