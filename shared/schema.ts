@@ -254,8 +254,8 @@ const orderSchema = new Schema<IOrder>({
   orderNumber: { type: String, required: true, unique: true },
   status: { 
     type: String, 
-    default: 'confirmed', 
-    enum: ['confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] 
+    default: 'order_placed', 
+    enum: ['order_placed', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] 
   },
   total: { type: Number, required: true },
   items: [{

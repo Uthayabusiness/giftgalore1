@@ -31,7 +31,7 @@ import PrivacyPolicy from "@/pages/privacy-policy";
 import TermsOfService from "@/pages/terms-of-service";
 import RefundCancellationPolicy from "@/pages/refund-cancellation-policy";
 import ShippingInfo from "@/pages/shipping-info";
-import PaymentSuccess from "@/pages/payment-success-simple";
+import PaymentSuccess from "@/pages/payment-success";
 import PaymentFailure from "@/pages/payment-failure";
 import OrderSuccess from "@/pages/order-success";
 import OrderFailed from "@/pages/order-failed";
