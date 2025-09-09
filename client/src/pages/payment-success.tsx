@@ -16,9 +16,18 @@ export default function PaymentSuccess() {
   const [orderData, setOrderData] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(true);
 
+  // Debug logging
+  console.log('🔍 Payment Success Page Debug:');
+  console.log('  - Location:', location);
+  console.log('  - Search Params:', searchParams.toString());
+  console.log('  - Order ID:', orderId);
+  console.log('  - Order ID starts with ORD-:', orderId.startsWith('ORD-'));
+
   // Mutation to handle payment success
   const paymentSuccessMutation = useMutation({
     mutationFn: async (data: { orderNumber: string; paymentAmount?: number; paymentMethod?: string }) => {
+      console.log('🚀 Calling payment success endpoint with data:', data);
+      
       const response = await fetch('/api/payment/success', {
         method: 'POST',
         headers: {
@@ -28,11 +37,18 @@ export default function PaymentSuccess() {
         body: JSON.stringify(data),
       });
 
+      console.log('📡 Payment success response status:', response.status);
+      console.log('📡 Payment success response ok:', response.ok);
+
       if (!response.ok) {
-        throw new Error('Failed to process payment success');
+        const errorText = await response.text();
+        console.error('❌ Payment success error response:', errorText);
+        throw new Error(`Failed to process payment success: ${response.status} ${errorText}`);
       }
 
-      return response.json();
+      const result = await response.json();
+      console.log('✅ Payment success response data:', result);
+      return result;
     },
     onSuccess: (data) => {
       console.log('✅ Payment success processed:', data);
@@ -56,7 +72,7 @@ export default function PaymentSuccess() {
 
   useEffect(() => {
     // Process payment success when component mounts
-    if (orderId && orderId !== 'ORD-' + Math.random().toString(36).substr(2, 9).toUpperCase()) {
+    if (orderId && orderId.startsWith('ORD-')) {
       console.log('🎉 Processing payment success for order:', orderId);
       paymentSuccessMutation.mutate({
         orderNumber: orderId,
@@ -64,6 +80,7 @@ export default function PaymentSuccess() {
         paymentMethod: 'Credit/Debit Card'
       });
     } else {
+      console.log('⚠️ No valid order ID found, skipping payment processing');
       setIsProcessing(false);
     }
   }, [orderId]);

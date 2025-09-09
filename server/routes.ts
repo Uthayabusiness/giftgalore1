@@ -679,6 +679,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { orderNumber, paymentAmount, paymentMethod } = req.body;
       
       console.log(`🎉 Payment success received for order: ${orderNumber}, user: ${userId}`);
+      console.log(`📋 Request body:`, req.body);
+      console.log(`👤 User ID:`, userId);
       
       // Check if order already exists
       let existingOrder = await storage.getOrderByOrderNumber(orderNumber);
@@ -708,6 +710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create new order from cart items
       const cartItems = await storage.getCartItems(userId);
+      console.log(`🛒 Cart items found: ${cartItems.length} items for user ${userId}`);
       
       if (cartItems.length === 0) {
         console.log(`⚠️ No cart items found for user ${userId}`);
@@ -755,8 +758,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`✅ New order created: ${orderNumber}`);
       
       // Clear cart after successful order creation
+      console.log(`🛒 Attempting to clear cart for user ${userId}...`);
       await storage.clearCart(userId);
-      console.log(`🛒 Cart cleared for user ${userId}`);
+      console.log(`✅ Cart cleared successfully for user ${userId}`);
       
       res.json({
         success: true,
