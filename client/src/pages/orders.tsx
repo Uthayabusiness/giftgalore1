@@ -215,48 +215,9 @@ export default function Orders() {
     },
   });
 
-  // Countdown timer for pending orders
-  useEffect(() => {
-    const pendingOrder = orders.find(order => order.status === 'pending');
-    
-    if (pendingOrder && pendingOrder.paymentInitiatedAt) {
-      const startTime = new Date(pendingOrder.paymentInitiatedAt).getTime();
-      const timeoutMinutes = 30;
-      const endTime = startTime + (timeoutMinutes * 60 * 1000);
-      
-      const updateTimer = () => {
-        const now = Date.now();
-        const remaining = Math.max(0, endTime - now);
-        
-        setTimeRemaining(remaining);
-        setIsExpired(remaining <= 0);
-        
-        if (remaining <= 0) {
-          // Order expired, refresh orders
-          queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
-        }
-      };
-      
-      updateTimer(); // Initial update
-      const interval = setInterval(updateTimer, 1000); // Update every second
-      
-      return () => clearInterval(interval);
-    } else {
-      setTimeRemaining(0);
-      setIsExpired(false);
-    }
-  }, [orders, queryClient]);
+  // No countdown timer needed - orders only appear after successful payment
 
-  // Format time remaining for display
-  const formatTimeRemaining = (milliseconds: number) => {
-    if (milliseconds <= 0) return '00:00';
-    
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
+  // No time formatting needed - orders only appear after successful payment
 
   // Debug logging to see what orders data we're receiving
   useEffect(() => {
@@ -275,23 +236,11 @@ export default function Orders() {
   }, [orders]);
 
   // Check for orders requiring attention and show notification
-  useEffect(() => {
-    const ordersNeedingAttention = orders.filter((order: any) => 
-      ['pending', 'confirmed', 'processing'].includes(order.status)
-    );
-    if (ordersNeedingAttention.length > 0) {
-      toast({
-        title: "Orders Require Attention",
-        description: `You have ${ordersNeedingAttention.length} order(s) that need attention. Please complete payment or cancel to place new orders.`,
-        variant: "default",
-        duration: 8000,
-      });
-    }
-  }, [orders, toast]);
+  // No more toast notifications for pending orders - orders only appear after successful payment
 
-  // Get orders that need attention (only confirmed, processing) - exclude pending and draft orders
+  // Get orders that need attention (only order_placed, processing) - exclude pending and draft orders
   const pendingOrders = orders.filter((order: any) => 
-    ['confirmed', 'processing'].includes(order.status)
+    ['order_placed', 'processing'].includes(order.status)
   );
 
   // Handle unauthorized errors at page level
@@ -344,8 +293,8 @@ export default function Orders() {
     switch (status) {
       case 'draft':
         return 'bg-gray-100 text-gray-700 border-gray-200';
-      case 'pending':
-        return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'order_placed':
+        return 'bg-green-100 text-green-700 border-green-200';
       case 'confirmed':
         return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'processing':
@@ -386,8 +335,8 @@ export default function Orders() {
     switch (status) {
       case 'draft':
         return 'Draft';
-      case 'pending':
-        return 'In Progress';
+      case 'order_placed':
+        return 'Order Placed';
       case 'confirmed':
         return 'Confirmed';
       case 'processing':
@@ -489,10 +438,10 @@ export default function Orders() {
         item.productName?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     
-    // Map 'pending' filter to show confirmed and processing orders
+    // Map 'pending' filter to show order_placed and processing orders
     let statusToMatch = statusFilter;
     if (statusFilter === 'pending') {
-      statusToMatch = 'confirmed'; // Show confirmed orders when "pending" filter is selected
+      statusToMatch = 'order_placed'; // Show order_placed orders when "pending" filter is selected
     }
     
     const matchesStatus = statusFilter === 'all' || order.status === statusToMatch;
@@ -770,7 +719,7 @@ export default function Orders() {
                     className="px-4 py-2 h-10"
                   >
                     <Clock className="h-4 w-4 mr-2" />
-                    In Progress ({orders.filter((order: any) => ['confirmed', 'processing'].includes(order.status)).length})
+                    In Progress ({orders.filter((order: any) => ['order_placed', 'processing'].includes(order.status)).length})
                   </Button>
                   <Button 
                     variant={statusFilter === 'delivered' ? 'default' : 'outline'}
@@ -859,7 +808,7 @@ export default function Orders() {
               <div>
                 <p className="text-orange-100 text-sm font-medium">In Progress</p>
                 <p className="text-3xl font-bold">
-                  {orders.filter((order: any) => ['confirmed', 'processing'].includes(order.status)).length}
+                  {orders.filter((order: any) => ['order_placed', 'processing'].includes(order.status)).length}
                 </p>
               </div>
               <div className="p-3 bg-orange-400/20 rounded-full">

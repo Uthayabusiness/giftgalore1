@@ -736,7 +736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Update existing order status
         const updatedOrder = await storage.updateOrderStatus(
           existingOrder._id.toString(),
-          'confirmed',
+          'order_placed',
           userId,
           'System',
           'Payment completed successfully'
@@ -793,7 +793,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         total: total,
         items: orderItems,
         shippingAddress: req.body.shippingAddress || {},
-        status: 'confirmed' as const,
+        status: 'order_placed' as const,
         paymentStatus: 'completed',
         paymentMethod: paymentMethod || 'Credit/Debit Card',
         paymentAmount: paymentAmount || total,
@@ -1920,7 +1920,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const updatedOrder = await Order.findOneAndUpdate(
                   { orderNumber: order_id },
                   { 
-                    status: 'confirmed',
+                    status: 'order_placed',
                     paymentStatus: 'completed',
                     paymentMethod: payment_method,
                     paymentAmount: payment_amount,
@@ -1928,7 +1928,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   },
                   { new: true }
                 );
-                console.log(`📝 Existing order ${order_id} status updated to confirmed`);
+                console.log(`📝 Existing order ${order_id} status updated to order_placed`);
                 
                 // Clear cart only after successful payment
                 if (updatedOrder && updatedOrder.userId) {
@@ -1980,7 +1980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       total: total,
                       items: orderItems,
                       shippingAddress: {}, // Will be updated from frontend if needed
-                      status: 'confirmed' as const,
+                      status: 'order_placed' as const,
                       paymentStatus: 'completed',
                       paymentMethod: payment_method,
                       paymentAmount: payment_amount,
