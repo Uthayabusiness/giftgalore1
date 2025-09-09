@@ -53,6 +53,8 @@ export default function HeroSection({ onGiftGuideClick }: HeroSectionProps = {})
             </div>
           </div>
           
+          {/* Four category cards hidden as requested */}
+          {/* 
           <div className="grid grid-cols-2 gap-4">
             <Card className="card-hover">
               <CardContent className="p-4">
@@ -102,6 +104,7 @@ export default function HeroSection({ onGiftGuideClick }: HeroSectionProps = {})
               </CardContent>
             </Card>
           </div>
+          */}
         </div>
       </div>
     </section>
