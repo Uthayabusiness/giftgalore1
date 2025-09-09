@@ -85,7 +85,7 @@ export default function PaymentSuccess() {
 
   useEffect(() => {
     // Process payment success when component mounts - only once
-    if (orderId && orderId.startsWith('ORD-') && !hasProcessed) {
+    if (orderId && typeof orderId === 'string' && orderId.startsWith('ORD-') && !hasProcessed) {
       console.log('🎉 Processing payment success for order:', orderId);
       setHasProcessed(true);
       paymentSuccessMutation.mutate({
@@ -113,7 +113,7 @@ export default function PaymentSuccess() {
             </div>
             <h1 className="text-4xl font-bold text-green-600 mb-4">🎉 Payment Successful!</h1>
             <p className="text-xl text-muted-foreground">
-              Thank you for your order. Your payment has been received.
+              {orderId ? 'Thank you for your order. Your payment has been received.' : 'Payment completed successfully. Processing your order...'}
             </p>
           </div>
 
@@ -294,13 +294,28 @@ export default function PaymentSuccess() {
             )}
           </div>
 
+          {/* Debug Information */}
+          {!orderId && (
+            <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                <strong>Debug Info:</strong> No order ID found in URL. 
+                <br />
+                <strong>Current URL:</strong> {location}
+                <br />
+                <strong>Search Params:</strong> {searchParams.toString()}
+                <br />
+                <strong>Order ID:</strong> {orderId || 'null'}
+              </p>
+            </div>
+          )}
+
           {/* Important Note */}
           <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800">
               <strong>Note:</strong> This is a demo payment success page for testing purposes. 
-              In production, this would be the actual payment confirmation from Razorpay.
+              In production, this would be the actual payment confirmation from Cashfree.
               <br />
-              <strong>For PayU/Razorpay:</strong> This demonstrates the complete payment flow for verification.
+              <strong>For Cashfree:</strong> This demonstrates the complete payment flow for verification.
             </p>
           </div>
         </div>
