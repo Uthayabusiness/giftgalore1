@@ -91,16 +91,6 @@ export default function RefundCancellationPolicy() {
                 </ul>
               </div>
               <div>
-                <h3 className="font-semibold mb-2">Non-Returnable Items</h3>
-                <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-4">
-                  <li>Personalized or custom-made products</li>
-                  <li>Gift cards and digital downloads</li>
-                  <li>Perishable items and consumables</li>
-                  <li>Items marked as "Final Sale" or "Non-Returnable"</li>
-                  <li>Products with hygiene concerns (e.g., personal care items)</li>
-                </ul>
-              </div>
-              <div>
                 <h3 className="font-semibold mb-2">Return Process</h3>
                 <ol className="list-decimal list-inside space-y-1 text-muted-foreground ml-4">
                   <li>Contact customer support within 30 days of delivery</li>
