@@ -24,7 +24,7 @@ import { Link } from 'wouter';
 export default function About() {
   const teamMembers = [
     {
-      name: "Uthayakrishna",
+      name: "Uthayakrishna K",
       role: "Founder & CEO",
       description: "Passionate about creating meaningful connections through thoughtful gifting.",
       initials: "AS"
