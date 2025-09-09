@@ -350,6 +350,9 @@ export default function TermsOfService() {
               <p className="text-muted-foreground">
                 If you have any questions about these terms of service, please contact us:
               </p>
+              <p className="text-muted-foreground">
+                <strong>Name:</strong> Uthayakrishna K
+              </p>
               <div className="space-y-2">
                 <p className="text-muted-foreground">
                   <strong>Email:</strong>{' '}
