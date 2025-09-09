@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import { Order } from "@shared/schema";
 import { databaseDiagnostics, testUserCreation, testAuthentication, clearAllSessions, checkSpecificUser } from "./diagnostics";
 import { cashfreeService, CreateOrderRequest } from "./cashfree-service";
+import { CASHFREE_CONFIG } from "./cashfree-config";
 
 // Validation schemas
 const insertCategorySchema = z.object({
@@ -693,12 +694,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const price = parseFloat(item.product.price.toString());
         const itemTotal = price * item.quantity;
         
-        // Add delivery charge if product has it
-        const deliveryCharge = item.product.hasDeliveryCharge ? 
+        // Add delivery charge only if product has delivery charge enabled
+        const deliveryCharge = (item.product.hasDeliveryCharge && item.product.deliveryCharge) ? 
           parseFloat(item.product.deliveryCharge.toString()) : 0;
+        
+        console.log(`💰 Item: ${item.product.name}, Price: ₹${price}, Qty: ${item.quantity}, ItemTotal: ₹${itemTotal}, HasDelivery: ${item.product.hasDeliveryCharge}, DeliveryCharge: ₹${deliveryCharge}`);
         
         return sum + itemTotal + deliveryCharge;
       }, 0);
+      
+      console.log(`💳 Total calculated for payment: ₹${total}`);
 
       // Get user details
       const user = await storage.getUser(userId);
@@ -751,12 +756,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('📝 Note: Cashfree v3 requires JavaScript SDK for payment initiation');
       console.log('🔑 Payment Session ID for SDK:', cashfreeOrder.payment_session_id);
       
+      // Override the payment URL to use the correct environment
+      // Cashfree API always returns production URLs, so we need to fix this
+      const correctPaymentUrl = `${CASHFREE_CONFIG.baseUrl}/pg/orders/${orderNumber}/payments`;
+      
+      console.log('🔧 Environment Configuration:');
+      console.log('  - Environment:', CASHFREE_CONFIG.environment);
+      console.log('  - Base URL:', CASHFREE_CONFIG.baseUrl);
+      console.log('  - Correct Payment URL:', correctPaymentUrl);
+      console.log('  - Original API Response URL:', (cashfreeOrder as any).payments?.url);
+      
       res.json({ 
         success: true,
         order: cashfreeOrder,
         paymentSessionId: cashfreeOrder.payment_session_id,
         orderNumber: orderNumber,
-        total: total
+        total: total,
+        paymentUrl: correctPaymentUrl,
+        environment: CASHFREE_CONFIG.environment,
+        baseUrl: CASHFREE_CONFIG.baseUrl
       });
     } catch (error) {
       console.error('❌ Error initiating payment from cart:', error);

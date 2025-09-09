@@ -74,8 +74,9 @@ export default function Cart() {
 
   // Calculate delivery charges based on individual products
   const deliveryFee = items.reduce((total, item) => {
-    if (item.product.hasDeliveryCharge) {
-      return total + item.product.deliveryCharge;
+    // Only add delivery charge if both hasDeliveryCharge is true AND deliveryCharge exists
+    if (item.product.hasDeliveryCharge && item.product.deliveryCharge) {
+      return total + parseFloat(item.product.deliveryCharge.toString());
     }
     return total;
   }, 0);

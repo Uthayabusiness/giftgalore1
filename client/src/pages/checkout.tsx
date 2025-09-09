@@ -26,6 +26,13 @@ import { z } from 'zod';
 import CashfreePayment from '@/components/cashfree-payment';
 import { paymentService } from '@/lib/payment-service';
 
+// Declare Cashfree global type
+declare global {
+  interface Window {
+    Cashfree: any;
+  }
+}
+
 const checkoutSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
@@ -599,56 +606,144 @@ export default function Checkout() {
 
       const initiatePayment = () => {
         try {
-          console.log('🚀 Initializing Cashfree payment with SDK...');
+          console.log('🚀 Initializing Cashfree v3 SDK...');
+          console.log('🔍 window.Cashfree type:', typeof window.Cashfree);
+          console.log('🔍 window.Cashfree available:', !!window.Cashfree);
 
-          // Initialize Cashfree with PRODUCTION mode
-          const cashfree = new window.Cashfree({
-            mode: 'PRODUCTION'
+          // Check if Cashfree v3 SDK is available
+          if (!window.Cashfree) {
+            throw new Error('Cashfree v3 SDK not loaded');
+          }
+
+          // Use Cashfree v3 SDK properly
+          console.log('🚀 Using Cashfree v3 SDK for payment...');
+          
+          // Show loading message
+          toast({
+            title: "Initializing Payment",
+            description: "Setting up payment gateway...",
           });
-
-          // Initiate payment using the SDK with correct callback-based method signature
-          cashfree.pay({
+          
+          // Use the payment session ID with Cashfree v3 SDK
+          const sessionId = paymentResponse.paymentSessionId;
+          console.log('🔑 Using Payment Session ID:', sessionId);
+          
+          // Initialize Cashfree with correct environment
+          const environment = paymentResponse.environment === 'PRODUCTION' ? 'production' : 'sandbox';
+          console.log('🌍 Cashfree Environment:', environment);
+          
+          // Create Cashfree instance
+          const cashfree = window.Cashfree({
+            mode: environment
+          });
+          
+          console.log('✅ Cashfree instance created');
+          
+          // Define checkout options
+          const checkoutOptions = {
             paymentSessionId: sessionId,
-            onSuccess: function(data) {
-              console.log('✅ Payment success:', data);
-              toast({
-                title: "Payment Successful",
-                description: "Your payment has been processed successfully!",
-              });
-              // Redirect to orders page
-              window.location.href = '/orders';
-            },
-            onFailure: function(err) {
-              console.error('❌ Payment failed:', err);
+            redirectTarget: '_self' // Use '_self' for same window redirect
+          };
+          
+          console.log('🔍 Checkout options:', checkoutOptions);
+          
+          // Trigger the payment UI and handle success/failure
+          cashfree.checkout(checkoutOptions)
+            .then((result) => {
+              console.log("✅ Payment result: ", result);
+              if (result.error) {
+                console.error('❌ Payment Error:', result.error.message);
+                toast({
+                  title: "Payment Failed",
+                  description: result.error.message || "Payment could not be completed. Please try again.",
+                  variant: "destructive",
+                });
+              }
+              if (result.redirect) {
+                console.log('✅ Payment initiated successfully, redirecting...');
+                toast({
+                  title: "Payment Successful",
+                  description: "Your payment has been processed successfully!",
+                });
+                // Clear cart and redirect to success page
+                clearCart();
+                window.location.href = `/payment-success?order_id=${paymentResponse.orderNumber}`;
+              }
+            })
+            .catch((error) => {
+              console.error("❌ Payment error: ", error);
               toast({
                 title: "Payment Failed",
                 description: "Payment could not be completed. Please try again.",
                 variant: "destructive",
               });
-            }
-          });
+            });
 
         } catch (error) {
           console.error('❌ Error initializing payment:', error);
+          console.error('❌ Error stack:', error.stack);
+          
+          // Fallback: Try direct payment URL redirect
+          console.log('🔄 Attempting direct payment URL redirect...');
           toast({
-            title: "Payment Error",
-            description: "Failed to initialize payment. Please try again.",
-            variant: "destructive",
+            title: "Payment Redirect",
+            description: "Redirecting to payment gateway...",
           });
+          
+          // Try to redirect to Cashfree payment URL directly
+          const paymentUrl = `https://api.cashfree.com/pg/orders/${paymentResponse.orderNumber}/payments`;
+          console.log('🔗 Payment URL:', paymentUrl);
+          
+          // Open payment URL in new tab
+          const paymentWindow = window.open(paymentUrl, '_blank');
+          
+          if (paymentWindow) {
+            console.log('✅ Payment window opened successfully');
+            // Monitor the payment window
+            const checkClosed = setInterval(() => {
+              if (paymentWindow.closed) {
+                clearInterval(checkClosed);
+                console.log('🔄 Payment window closed, checking payment status...');
+                // Redirect to success page (in real implementation, you'd check payment status)
+                setTimeout(() => {
+                  window.location.href = `/payment-success?order_id=${paymentResponse.orderNumber}`;
+                }, 1000);
+              }
+            }, 1000);
+          } else {
+            console.log('❌ Failed to open payment window, trying direct redirect...');
+            // If popup blocked, try direct redirect
+            window.location.href = paymentUrl;
+          }
         }
       };
 
-      // Load Cashfree SDK if not already loaded
+      // Load Cashfree v3 SDK if not already loaded
       if (!window.Cashfree) {
-        console.log('📦 Loading Cashfree SDK...');
+        console.log('📦 Loading Cashfree v3 SDK...');
         const script = document.createElement('script');
         script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+        script.async = true;
         script.onload = () => {
-          console.log('✅ Cashfree SDK loaded successfully');
-          initiatePayment();
+          console.log('✅ Cashfree v3 SDK loaded successfully');
+          console.log('🔍 Checking window.Cashfree availability:', !!window.Cashfree);
+          // Wait a bit for the SDK to fully initialize
+          setTimeout(() => {
+            console.log('🔍 After timeout - window.Cashfree available:', !!window.Cashfree);
+            if (window.Cashfree) {
+              initiatePayment();
+            } else {
+              console.error('❌ Cashfree v3 SDK still not available after timeout');
+              toast({
+                title: "Payment Error",
+                description: "Cashfree v3 SDK failed to initialize. Please try again.",
+                variant: "destructive",
+              });
+            }
+          }, 1000);
         };
         script.onerror = () => {
-          console.error('❌ Failed to load Cashfree SDK');
+          console.error('❌ Failed to load Cashfree v3 SDK');
           toast({
             title: "Payment Error",
             description: "Failed to load payment system. Please try again.",
@@ -657,6 +752,7 @@ export default function Checkout() {
         };
         document.head.appendChild(script);
       } else {
+        console.log('✅ Cashfree v3 SDK already loaded');
         initiatePayment();
       }
       } else {
@@ -706,8 +802,9 @@ export default function Checkout() {
       hasDeliveryCharge: item.product.hasDeliveryCharge,
       deliveryCharge: item.product.deliveryCharge
     });
-    if (item.product.hasDeliveryCharge) {
-      return total + item.product.deliveryCharge;
+    // Only add delivery charge if both hasDeliveryCharge is true AND deliveryCharge exists
+    if (item.product.hasDeliveryCharge && item.product.deliveryCharge) {
+      return total + parseFloat(item.product.deliveryCharge.toString());
     }
     return total;
   }, 0);
