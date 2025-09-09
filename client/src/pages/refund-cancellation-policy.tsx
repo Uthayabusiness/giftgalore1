@@ -270,8 +270,7 @@ export default function RefundCancellationPolicy() {
                   <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-4">
                     <li><strong>Return Processing:</strong> 5-10 business days</li>
                     <li><strong>Refund Processing:</strong> 5-10 business days</li>
-                    <li><strong>Exchange Shipping:</strong> 2-3 business days</li>
-                    <li><strong>Store Credit:</strong> Immediate upon approval</li>
+                    <li><strong>Exchange Delivery:</strong> 2-3 business days</li>
                   </ul>
                 </div>
               </div>
